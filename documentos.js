@@ -71,7 +71,7 @@
     const [pageW,pageH]=A4.landscape,pages=[];let ops,y;
     const compact=Boolean(detailKey&&priceFields.length===1),cols={name:34,detail:500,prices:compact?[808]:[500,574,648,722,808],right:808};
     const groups=new Map();
-    [...items].sort((a,b)=>a.categoria.localeCompare(b.categoria,'es',{sensitivity:'base',numeric:true})||a.nombre.localeCompare(b.nombre,'es',{sensitivity:'base',numeric:true})).forEach(p=>{if(!groups.has(p.categoria))groups.set(p.categoria,[]);groups.get(p.categoria).push(p);});
+    [...items].sort((a,b)=>a.categoria.localeCompare(b.categoria,'es',{sensitivity:'base',numeric:true})||(Number(a.orden)-Number(b.orden))||a.nombre.localeCompare(b.nombre,'es',{sensitivity:'base',numeric:true})).forEach(p=>{if(!groups.has(p.categoria))groups.set(p.categoria,[]);groups.get(p.categoria).push(p);});
     function tableHeader(){
       rect(ops,30,y-5,pageW-60,19,[.89,.95,.93]);
       text(ops,cols.name,y,'Producto',8,true);

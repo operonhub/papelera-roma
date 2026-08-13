@@ -53,17 +53,18 @@ function normaliseProduct(raw){
   product.presentacion=String(raw.presentacion||raw.presentation||'').trim();
   product.observaciones=String(raw.observaciones||raw.notes||'').trim();
   product.catalogo=String(raw.catalogo||raw.catalog_slug||'papelera');
+  product.orden=Number(raw.orden??raw.display_order??raw.fuente_fila??raw.source_row??0)||0;
   product.activo=raw.activo===undefined?raw.active!==false:String(raw.activo).toUpperCase()!=='FALSE';
   return product;
 }
 
 function productFromRemote(row){
   const prices=Object.fromEntries((row.prices||[]).map(price=>[price.tier,Number(price.amount)]));
-  return normaliseProduct({id:row.id,codigo:row.code,nombre:row.name,categoria:row.category?.name||'Sin categoría',categoria_id:row.category?.id??null,catalog_slug:row.catalog?.slug||'papelera',cantidad_bulto:row.bulk_quantity,presentacion:row.presentation,observaciones:row.notes,active:row.active,...Object.fromEntries(PRICE_FIELDS.map(field=>[field.key,prices[field.tier]??null]))});
+  return normaliseProduct({id:row.id,codigo:row.code,nombre:row.name,categoria:row.category?.name||'Sin categoría',categoria_id:row.category?.id??null,catalog_slug:row.catalog?.slug||'papelera',cantidad_bulto:row.bulk_quantity,presentacion:row.presentation,observaciones:row.notes,display_order:row.display_order,active:row.active,...Object.fromEntries(PRICE_FIELDS.map(field=>[field.key,prices[field.tier]??null]))});
 }
 
 function productFromSnapshot(row){
-  return normaliseProduct({id:row.id,codigo:row.code,nombre:row.name,categoria:row.category,catalog_slug:state.catalog,cantidad_bulto:row.bulk_quantity,presentacion:row.presentation,observaciones:row.notes,active:row.active,...Object.fromEntries(PRICE_FIELDS.map(field=>[field.key,row.prices?.[field.tier]??null]))});
+  return normaliseProduct({id:row.id,codigo:row.code,nombre:row.name,categoria:row.category,catalog_slug:state.catalog,cantidad_bulto:row.bulk_quantity,presentacion:row.presentation,observaciones:row.notes,display_order:row.display_order,active:row.active,...Object.fromEntries(PRICE_FIELDS.map(field=>[field.key,row.prices?.[field.tier]??null]))});
 }
 
 async function init(){
@@ -84,7 +85,7 @@ function bindStatic(){
   $('#search').oninput=event=>{state.filters.search=event.target.value;clearTimeout(searchTimer);searchTimer=setTimeout(renderCatalog,100);};
   $('#category-filter').onchange=event=>{state.filters.category=event.target.value;renderCatalog();};
   $('#catalog').onchange=event=>{if(event.target.matches('.product-check'))toggleSelection(event.target);if(event.target.matches('.category-check'))toggleCategorySelection(event.target);if(event.target.matches('.price-input'))updatePrice(event.target);};
-  $('#catalog').onclick=event=>{const editButton=event.target.closest('[data-edit-product-id]');if(editButton)return openEditProduct(editButton.dataset.editProductId);const deleteButton=event.target.closest('[data-delete-product-id]');if(deleteButton){const product=state.products.find(item=>item.id===deleteButton.dataset.deleteProductId);if(product)return confirmDeactivateProduct(product);}const categoryButton=event.target.closest('[data-edit-category-id]');if(categoryButton)openRenameCategory(Number(categoryButton.dataset.editCategoryId),categoryButton.dataset.editCategoryName);};
+  $('#catalog').onclick=event=>{const editButton=event.target.closest('[data-edit-product-id]');if(editButton)return openEditProduct(editButton.dataset.editProductId);const deleteButton=event.target.closest('[data-delete-product-id]');if(deleteButton){const product=state.products.find(item=>item.id===deleteButton.dataset.deleteProductId);if(product)return confirmDeactivateProduct(product);}const orderButton=event.target.closest('[data-order-category-id]');if(orderButton)return openProductOrder(Number(orderButton.dataset.orderCategoryId),orderButton.dataset.orderCategoryName);const categoryButton=event.target.closest('[data-edit-category-id]');if(categoryButton)openRenameCategory(Number(categoryButton.dataset.editCategoryId),categoryButton.dataset.editCategoryName);};
   $('#catalog').onfocusin=event=>{if(event.target.matches('.price-input'))event.target.select();};
   $('#catalog').onkeydown=event=>{if(event.target.matches('.price-input')&&event.key==='Enter')event.target.blur();};
   $('#new-product').onclick=openNewProduct;$('#download-excel').onclick=()=>downloadExcel(filtered());$('#print-price-list').onclick=printPriceList;$('#share-price-list').onclick=sharePriceList;$('#manage-categories').onclick=openCategoryManager;$('#save-backup').onclick=saveBackup;$('#view-backups').onclick=openBackups;$('#open-increase').onclick=()=>openIncrease(false);$('#selection-increase').onclick=()=>openIncrease(true);$('#selection-quote').onclick=()=>openQuote(true);$('#clear-selection').onclick=()=>{state.selected.clear();renderCatalog();};
@@ -109,7 +110,7 @@ async function rpc(name,body){return db(`rpc/${name}`,{method:'POST',body,prefer
 async function loadCloudData(){
   $('#loading-card').hidden=false;
   const [rows,backups,history]=await Promise.all([
-    dbPages('products?select=id,code,name,bulk_quantity,presentation,notes,active,catalog:catalogs!inner(slug,name),category:categories(id,name),prices:product_prices(tier,amount)&active=eq.true&order=name.asc'),
+    dbPages('products?select=id,code,name,bulk_quantity,presentation,notes,display_order,active,catalog:catalogs!inner(slug,name),category:categories(id,name),prices:product_prices(tier,amount)&active=eq.true&order=category_id.asc,display_order.asc,name.asc'),
     db('catalog_backups?select=id,label,product_count,price_count,created_at,catalog:catalogs(slug,name)&order=created_at.desc&limit=40'),
     db('price_change_batches?select=id,change_type,scope_label,percentage,affected_products,affected_prices,created_at&order=created_at.desc&limit=50'),
   ]);
@@ -124,6 +125,7 @@ function visibleBackups(){return state.backups.filter(backup=>(backup.catalog?.s
 function setCatalog(slug){if(!CATALOGS[slug]||slug===state.catalog)return;state.catalog=slug;state.filters.search='';state.filters.category='';state.selected.clear();state.increase.tiers=new Set(priceFieldsFor(slug).map(field=>field.tier));$('#search').value='';document.querySelectorAll('[data-catalog]').forEach(button=>button.classList.toggle('active',button.dataset.catalog===slug));renderAll();}
 function renderAll(){renderFilters();renderSummary();renderCatalog();renderQuote();}
 function unique(key,products=catalogProducts()){return [...new Set(products.map(product=>product[key]).filter(Boolean))].sort(alphabetical);}
+function byProductOrder(a,b){return Number(a.orden)-Number(b.orden)||alphabetical(a.nombre,b.nombre)||alphabetical(a.id,b.id);}
 function totalPriceCells(products=catalogProducts()){return products.reduce((sum,product)=>sum+priceFieldsFor(product.catalogo).filter(field=>isPrice(product[field.key])).length,0);}
 function filtered(){const query=state.filters.search.trim().toLocaleLowerCase('es');return catalogProducts().filter(product=>(!query||`${product.nombre} ${product.categoria} ${product.observaciones}`.toLocaleLowerCase('es').includes(query))&&(!state.filters.category||product.categoria===state.filters.category));}
 function renderFilters(){const categories=unique('categoria');$('#category-filter').innerHTML='<option value="">Todas las categorías</option>'+categories.map(category=>`<option value="${esc(category)}" ${category===state.filters.category?'selected':''}>${esc(category)}</option>`).join('');}
@@ -132,7 +134,7 @@ function renderSummary(){$('#product-count').textContent=number(catalogProducts(
 function renderCatalog(){
   const items=filtered(),categories=[...new Set(items.map(product=>product.categoria))].sort(alphabetical);$('#empty').hidden=items.length>0||!catalogProducts().length;
   const fields=priceFieldsFor(state.catalog),heladeria=state.catalog==='heladeria';
-  $('#catalog').innerHTML=categories.map(category=>{const products=items.filter(product=>product.categoria===category),categoryId=products[0]?.categoria_id??'',headers=heladeria?`<span>Cantidad / presentación</span>${fields.map(field=>`<span>${field.label}</span>`).join('')}`:`${fields.map(field=>`<span>${field.label}</span>`).join('')}<span>Contenido del bulto</span>`;return `<section class="category-block ${state.catalog}"><div class="category-heading"><label class="category-select"><input class="category-check" type="checkbox" data-category="${esc(category)}" aria-label="Seleccionar categoría ${esc(category)}"><strong>${esc(category)}</strong></label><div class="category-tools"><span>${number(products.length)}</span><button type="button" data-edit-category-id="${categoryId}" data-edit-category-name="${esc(category)}" aria-label="Editar categoría ${esc(category)}">Editar nombre</button></div></div><div class="price-columns-header"><span></span><span>Producto</span>${headers}<span></span></div>${products.map(productRow).join('')}</section>`;}).join('');updateSelectionBar();syncCategoryChecks();
+  $('#catalog').innerHTML=categories.map(category=>{const products=items.filter(product=>product.categoria===category).sort(byProductOrder),categoryId=products[0]?.categoria_id??'',headers=heladeria?`<span>Cantidad / presentación</span>${fields.map(field=>`<span>${field.label}</span>`).join('')}`:`${fields.map(field=>`<span>${field.label}</span>`).join('')}<span>Contenido del bulto</span>`;return `<section class="category-block ${state.catalog}"><div class="category-heading"><label class="category-select"><input class="category-check" type="checkbox" data-category="${esc(category)}" aria-label="Seleccionar categoría ${esc(category)}"><strong>${esc(category)}</strong></label><div class="category-tools"><span>${number(products.length)}</span><button type="button" data-order-category-id="${categoryId}" data-order-category-name="${esc(category)}" aria-label="Ordenar productos de ${esc(category)}">Ordenar productos</button><button type="button" data-edit-category-id="${categoryId}" data-edit-category-name="${esc(category)}" aria-label="Editar categoría ${esc(category)}">Editar nombre</button></div></div><div class="price-columns-header"><span></span><span>Producto</span>${headers}<span></span></div>${products.map(productRow).join('')}</section>`;}).join('');updateSelectionBar();syncCategoryChecks();
 }
 
 function productActionIcon(kind){return kind==='edit'?'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>':'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg>';}
@@ -152,8 +154,45 @@ function categoryRecords(){const records=new Map();for(const product of catalogP
 
 function openCategoryManager(){
   const categories=categoryRecords();
-  $('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel panel-wide" role="dialog" aria-modal="true"><div class="panel-head"><div><h2>Categorías</h2><p>Seleccioná todos los productos de una categoría o corregí su nombre.</p></div><button class="icon-close" data-close>×</button></div><div class="category-manager-list">${categories.map(category=>`<div class="category-manager-row"><div><strong>${esc(category.name)}</strong><small>${number(category.count)} productos</small></div><div><button class="btn btn-quiet" data-select-category="${esc(category.name)}">Seleccionar</button><button class="btn btn-secondary" data-rename-category-id="${category.id}" data-rename-category-name="${esc(category.name)}">Editar nombre</button></div></div>`).join('')}</div></section></div>`;
-  bindPanelClose();document.querySelectorAll('[data-select-category]').forEach(button=>button.onclick=()=>{for(const product of catalogProducts().filter(item=>item.categoria===button.dataset.selectCategory))state.selected.add(product.id);closePanel();renderCatalog();showToast(`Categoría seleccionada: ${button.dataset.selectCategory}.`);});document.querySelectorAll('[data-rename-category-id]').forEach(button=>button.onclick=()=>openRenameCategory(Number(button.dataset.renameCategoryId),button.dataset.renameCategoryName));
+  $('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel panel-wide" role="dialog" aria-modal="true"><div class="panel-head"><div><h2>Categorías</h2><p>Seleccioná, ordená o corregí el nombre de cada categoría.</p></div><button class="icon-close" data-close>×</button></div><div class="category-manager-list">${categories.map(category=>`<div class="category-manager-row"><div><strong>${esc(category.name)}</strong><small>${number(category.count)} productos</small></div><div><button class="btn btn-quiet" data-select-category="${esc(category.name)}">Seleccionar</button><button class="btn btn-secondary" data-manage-order-id="${category.id}" data-manage-order-name="${esc(category.name)}">Ordenar productos</button><button class="btn btn-secondary" data-rename-category-id="${category.id}" data-rename-category-name="${esc(category.name)}">Editar nombre</button></div></div>`).join('')}</div></section></div>`;
+  bindPanelClose();document.querySelectorAll('[data-select-category]').forEach(button=>button.onclick=()=>{for(const product of catalogProducts().filter(item=>item.categoria===button.dataset.selectCategory))state.selected.add(product.id);closePanel();renderCatalog();showToast(`Categoría seleccionada: ${button.dataset.selectCategory}.`);});document.querySelectorAll('[data-manage-order-id]').forEach(button=>button.onclick=()=>openProductOrder(Number(button.dataset.manageOrderId),button.dataset.manageOrderName));document.querySelectorAll('[data-rename-category-id]').forEach(button=>button.onclick=()=>openRenameCategory(Number(button.dataset.renameCategoryId),button.dataset.renameCategoryName));
+}
+
+function orderRow(product,index,total){
+  return `<div class="order-product-row" draggable="true" data-order-product-id="${product.id}"><button type="button" class="order-grip" aria-label="Arrastrar ${esc(product.nombre)}" title="Arrastrar para ordenar">⠿</button><span class="order-position">${index+1}</span><div class="order-product-name"><strong>${esc(product.nombre)}</strong>${product.observaciones?`<small>${esc(product.observaciones)}</small>`:''}</div><div class="order-buttons"><button type="button" data-order-top aria-label="Mover ${esc(product.nombre)} al inicio" title="Mover al inicio">⇈</button><button type="button" data-order-up aria-label="Subir ${esc(product.nombre)}" title="Subir" ${index===0?'disabled':''}>↑</button><button type="button" data-order-down aria-label="Bajar ${esc(product.nombre)}" title="Bajar" ${index===total-1?'disabled':''}>↓</button></div></div>`;
+}
+
+function openProductOrder(categoryId,categoryName){
+  const products=catalogProducts().filter(product=>product.categoria===categoryName).sort(byProductOrder);
+  $('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel panel-wide order-panel" role="dialog" aria-modal="true" aria-labelledby="order-title"><div class="panel-head"><div><span class="step-label">ORDEN PERSONALIZADO</span><h2 id="order-title">${esc(categoryName)}</h2><p>Arrastrá los productos o usá las flechas. “Mover al inicio” sirve para destacar una marca rápidamente.</p></div><button class="icon-close" data-close>×</button></div><div class="order-help"><span>⠿ Arrastrar</span><span>⇈ Mover al inicio</span><span>↑↓ Subir o bajar</span></div><div class="order-search"><span>⌕</span><input id="order-search" type="search" placeholder="Buscar producto o marca…" autocomplete="off"><small id="order-search-status">${number(products.length)} productos</small></div><div class="order-product-list" id="order-product-list">${products.map((product,index)=>orderRow(product,index,products.length)).join('')}</div><div class="form-error" id="order-error" hidden></div><div class="panel-actions order-panel-actions"><button class="btn btn-quiet" type="button" data-close>Cancelar</button><button class="btn btn-accent" id="save-product-order" type="button">Guardar orden</button></div></section></div>`;
+  bindPanelClose();bindProductOrder();$('#order-search').oninput=searchOrderedProduct;$('#save-product-order').onclick=()=>saveProductOrder(categoryId,categoryName);
+}
+
+function searchOrderedProduct(event){
+  const query=event.target.value.trim().toLocaleLowerCase('es'),rows=[...document.querySelectorAll('.order-product-row')],status=$('#order-search-status');rows.forEach(row=>row.classList.remove('order-match'));if(!query){status.textContent=`${number(rows.length)} productos`;return;}const match=rows.find(row=>row.querySelector('.order-product-name').textContent.toLocaleLowerCase('es').includes(query));status.textContent=match?'Producto encontrado':'Sin coincidencias';if(match){match.classList.add('order-match');match.scrollIntoView({block:'center',behavior:'smooth'});}
+}
+
+function refreshOrderPositions(){
+  const rows=[...document.querySelectorAll('.order-product-row')];
+  rows.forEach((row,index)=>{row.querySelector('.order-position').textContent=index+1;row.querySelector('[data-order-up]').disabled=index===0;row.querySelector('[data-order-down]').disabled=index===rows.length-1;});
+}
+
+function bindProductOrder(){
+  const list=$('#order-product-list');let dragged=null;
+  list.onclick=event=>{const row=event.target.closest('.order-product-row');if(!row)return;if(event.target.closest('[data-order-top]'))list.prepend(row);else if(event.target.closest('[data-order-up]')&&row.previousElementSibling)list.insertBefore(row,row.previousElementSibling);else if(event.target.closest('[data-order-down]')&&row.nextElementSibling)list.insertBefore(row.nextElementSibling,row);else return;refreshOrderPositions();row.classList.add('order-moved');setTimeout(()=>row.classList.remove('order-moved'),300);};
+  list.ondragstart=event=>{dragged=event.target.closest('.order-product-row');if(!dragged)return;dragged.classList.add('dragging');event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/plain',dragged.dataset.orderProductId);};
+  list.ondragover=event=>{event.preventDefault();const target=event.target.closest('.order-product-row');if(!dragged||!target||target===dragged)return;const rect=target.getBoundingClientRect();list.insertBefore(dragged,event.clientY<rect.top+rect.height/2?target:target.nextElementSibling);};
+  list.ondrop=event=>{event.preventDefault();refreshOrderPositions();};
+  list.ondragend=()=>{dragged?.classList.remove('dragging');dragged=null;refreshOrderPositions();};
+}
+
+async function saveProductOrder(categoryId,categoryName){
+  const ids=[...document.querySelectorAll('.order-product-row')].map(row=>row.dataset.orderProductId),button=$('#save-product-order'),error=$('#order-error');button.disabled=true;button.textContent='Guardando…';
+  try{
+    if(state.preview){ids.forEach((id,index)=>{const product=state.products.find(item=>item.id===id);if(product)product.orden=index+1;});}
+    else{await rpc('papelera_reorder_products',{p_category_id:categoryId,p_product_ids:ids});await loadCloudData();}
+    closePanel();renderCatalog();showToast(`Orden guardado en ${categoryName}.`);
+  }catch(failure){error.textContent=readableError(failure);error.hidden=false;button.disabled=false;button.textContent='Guardar orden';}
 }
 
 function openRenameCategory(id,name){
