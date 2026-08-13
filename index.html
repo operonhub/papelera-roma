@@ -16,7 +16,7 @@
         <img class="brand-logo" src="assets/logo-papelera-roma.png" alt="Logo de Papelera Roma">
         <div><strong>Papelera Roma</strong><small>Productos · Precios · Presupuestos</small></div>
       </div>
-      <button class="user-chip" id="auth-button" type="button">Acceso temporal</button>
+      <span class="user-chip" id="auth-button">Acceso público</span>
     </div>
     <div class="container app-tabs" role="tablist" aria-label="Secciones">
       <button class="app-tab active" id="catalog-tab" role="tab" aria-selected="true" data-view="catalog">Lista de precios</button>
@@ -31,6 +31,8 @@
         <div class="page-actions">
           <button class="btn btn-primary" id="new-product">＋ Nuevo producto</button>
           <button class="btn btn-secondary" id="download-excel">⇩ Descargar Excel</button>
+          <button class="btn btn-secondary" id="print-price-list">Imprimir / PDF</button>
+          <button class="btn btn-whatsapp" id="share-price-list">WhatsApp</button>
           <button class="btn btn-secondary" id="save-backup">☁ Guardar copia</button>
           <button class="btn btn-secondary" id="view-backups">Ver copias <span class="button-count" id="backup-count">0</span></button>
           <button class="btn btn-secondary" id="open-history">Historial</button>
@@ -67,7 +69,6 @@
     <section class="app-view" id="quote-view" role="tabpanel" aria-labelledby="quote-tab" hidden>
       <div class="page-heading compact">
         <div><p class="eyebrow">PRESUPUESTO</p><h1>Nuevo presupuesto</h1><p>Cada renglón usa una presentación concreta; la cantidad indica cuántas presentaciones se venden.</p></div>
-        <button class="btn btn-secondary" id="clear-quote">Vaciar presupuesto</button>
       </div>
 
       <div class="quote-layout">
@@ -76,8 +77,6 @@
           <div class="document-fields">
             <div class="field"><label for="quote-client">Cliente</label><input id="quote-client" placeholder="Nombre o comercio"></div>
             <div class="field"><label for="quote-address">Domicilio</label><input id="quote-address" placeholder="Opcional"></div>
-            <div class="field"><label for="quote-validity">Validez</label><input id="quote-validity" value="7 días"></div>
-            <div class="field"><label for="quote-number">Número</label><input id="quote-number" disabled></div>
           </div>
         </section>
 
@@ -89,17 +88,21 @@
         <section class="workspace-card quote-detail-card">
           <div class="section-title"><span>3</span><div><h2>Detalle</h2><p>Elegí Unidad, Pack o Bulto en cada renglón.</p></div></div>
           <div class="quote-items" id="quote-items"></div>
-          <div class="quote-total"><span>Total del presupuesto</span><strong id="quote-total">$ 0</strong></div>
-          <div class="field"><label for="quote-notes">Observaciones</label><input id="quote-notes" placeholder="Forma de pago, entrega u otra aclaración"></div>
+          <div class="quote-summary">
+            <div class="quote-summary-row"><span>Subtotal</span><strong id="quote-subtotal">$ 0</strong></div>
+            <div class="quote-summary-row quote-discount"><label for="quote-discount">Descuento</label><div class="discount-input"><input id="quote-discount" type="number" min="0" max="100" step="0.1" value="0" aria-label="Porcentaje de descuento"><span>%</span></div><strong id="quote-discount-amount">− $ 0</strong></div>
+            <div class="quote-summary-row quote-total"><span>Total</span><strong id="quote-total">$ 0</strong></div>
+          </div>
         </section>
 
         <section class="workspace-card quote-output">
-          <div><h2>Exportar presupuesto</h2><p>Descargalo en PDF o Excel, o preparalo para compartir por WhatsApp.</p></div>
+          <div><h2>Exportar presupuesto</h2><p>El número se genera automáticamente recién al exportar o compartir.</p></div>
           <div class="document-actions">
-            <button class="btn btn-dark" id="quote-pdf">Descargar PDF</button>
+            <button class="btn btn-dark" id="quote-pdf">Imprimir / PDF</button>
             <button class="btn btn-secondary" id="quote-excel">Descargar Excel</button>
-            <button class="btn btn-whatsapp" id="quote-whatsapp">WhatsApp con PDF</button>
+            <button class="btn btn-whatsapp" id="quote-whatsapp">Enviar PDF por WhatsApp</button>
             <button class="btn btn-secondary" id="quote-text">WhatsApp texto</button>
+            <button class="btn btn-danger" id="clear-quote">Vaciar presupuesto</button>
           </div>
         </section>
       </div>

@@ -23,18 +23,23 @@
   function textRight(ops,right,y,value,size=9,bold=false,color=INK){text(ops,right-width(value,size,bold),y,value,size,bold,color);}
   function rect(ops,x,y,w,h,color){ops.push(`${color.join(' ')} rg ${x} ${y} ${w} ${h} re f`);}
   function line(ops,x1,y1,x2,y2,color=[.82,.89,.87]){ops.push(`${color.join(' ')} RG .5 w ${x1} ${y1} m ${x2} ${y2} l S`);}
+  function image(ops,x,y,w,h){ops.push(`q ${w} 0 0 ${h} ${x} ${y} cm /Logo Do Q`);}
+  let brandPromise;
+  async function loadBrand(){
+    if(!brandPromise)brandPromise=fetch('assets/logo-papelera-roma-pdf.jpg').then(async response=>{if(!response.ok)throw new Error('No se pudo cargar el logo para el PDF.');return {bytes:new Uint8Array(await response.arrayBuffer()),width:306,height:320};});
+    return brandPromise;
+  }
 
   function brandHeader(ops,pageW,pageH,kind,subtitle){
     rect(ops,0,pageH-74,pageW,74,TEAL);
-    rect(ops,34,pageH-55,30,30,MINT);
-    text(ops,43,pageH-45,'R',15,true,TEAL);
-    text(ops,76,pageH-35,'PAPELERA ROMA',17,true,[1,1,1]);
-    text(ops,76,pageH-51,'Monte Chingolo',8,false,[.86,.96,.94]);
+    image(ops,28,pageH-67,58,58);
+    text(ops,98,pageH-35,'PAPELERA ROMA',17,true,[1,1,1]);
+    text(ops,98,pageH-51,'Monte Chingolo',8,false,[.86,.96,.94]);
     textRight(ops,pageW-34,pageH-36,kind,12,true,[1,1,1]);
     if(subtitle)textRight(ops,pageW-34,pageH-51,truncate(subtitle,260,8),8,false,[.86,.96,.94]);
   }
 
-  function assemble(pages,pageW,pageH){
+  function assemble(pages,pageW,pageH,brand){
     const count=pages.length;
     for(let i=0;i<count;i++){
       text(pages[i],34,20,'Papelera Roma - Documento generado desde la lista de precios',7,false,[.35,.48,.46]);
@@ -42,25 +47,28 @@
     }
     const objects=[],pageIds=[];
     for(let i=0;i<count;i++)pageIds.push(3+i*2);
-    const regular=3+count*2,bold=regular+1;
+    const regular=3+count*2,bold=regular+1,logo=bold+1;
     objects[1]='<< /Type /Catalog /Pages 2 0 R >>';
     objects[2]=`<< /Type /Pages /Kids [${pageIds.map(id=>id+' 0 R').join(' ')}] /Count ${count} >>`;
     pages.forEach((ops,i)=>{
       const pageId=3+i*2,contentId=pageId+1,stream=ops.join('\n');
-      objects[pageId]=`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageW} ${pageH}] /Resources << /Font << /F1 ${regular} 0 R /F2 ${bold} 0 R >> >> /Contents ${contentId} 0 R >>`;
+      objects[pageId]=`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageW} ${pageH}] /Resources << /Font << /F1 ${regular} 0 R /F2 ${bold} 0 R >> /XObject << /Logo ${logo} 0 R >> >> /Contents ${contentId} 0 R >>`;
       objects[contentId]=`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
     });
     objects[regular]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
     objects[bold]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
-    let out='%PDF-1.4\n%âãÏÓ\n';const offsets=new Array(bold+1).fill(0);
-    for(let id=1;id<=bold;id++){offsets[id]=out.length;out+=`${id} 0 obj\n${objects[id]}\nendobj\n`;}
-    const xref=out.length;out+=`xref\n0 ${bold+1}\n0000000000 65535 f \n`;
-    for(let id=1;id<=bold;id++)out+=String(offsets[id]).padStart(10,'0')+' 00000 n \n';
-    out+=`trailer\n<< /Size ${bold+1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+    const binary=Array.from(brand.bytes,byte=>String.fromCharCode(byte)).join('');
+    objects[logo]=`<< /Type /XObject /Subtype /Image /Width ${brand.width} /Height ${brand.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${brand.bytes.length} >>\nstream\n${binary}\nendstream`;
+    let out='%PDF-1.4\n%âãÏÓ\n';const offsets=new Array(logo+1).fill(0);
+    for(let id=1;id<=logo;id++){offsets[id]=out.length;out+=`${id} 0 obj\n${objects[id]}\nendobj\n`;}
+    const xref=out.length;out+=`xref\n0 ${logo+1}\n0000000000 65535 f \n`;
+    for(let id=1;id<=logo;id++)out+=String(offsets[id]).padStart(10,'0')+' 00000 n \n';
+    out+=`trailer\n<< /Size ${logo+1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
     const bytes=new Uint8Array(out.length);for(let i=0;i<out.length;i++)bytes[i]=out.charCodeAt(i)&255;return bytes;
   }
 
-  function buildPriceListPdf({items,title,client,date,priceFields}){
+  async function buildPriceListPdf({items,title,client,date,priceFields}){
+    const brand=await loadBrand();
     const [pageW,pageH]=A4.landscape,pages=[];let ops,y;
     const cols={name:34,prices:[440,510,580,650,720],right:808};
     const groups=new Map();
@@ -91,10 +99,11 @@
         y-=17;line(ops,34,y+5,pageW-34,y+5);
       }
     }
-    return assemble(pages,pageW,pageH);
+    return assemble(pages,pageW,pageH,brand);
   }
 
-  function buildQuotePdf({number,client,address,validity,notes,date,items,subtotal}){
+  async function buildQuotePdf({number,client,address,date,items,subtotal,discountPercentage,discountAmount,total}){
+    const brand=await loadBrand();
     const [pageW,pageH]=A4.portrait,pages=[];let ops,y;
     function tableHeader(){
       rect(ops,30,y-5,pageW-60,20,[.89,.95,.93]);
@@ -105,7 +114,7 @@
       ops=[];pages.push(ops);brandHeader(ops,pageW,pageH,'PRESUPUESTO',number?`N° ${number}`:'');
       y=pageH-98;
       if(pages.length===1){
-        text(ops,34,y,`Fecha: ${date}`,9,false);textRight(ops,pageW-34,y,`Validez: ${validity||'A confirmar'}`,9,false);y-=18;
+        text(ops,34,y,`Fecha: ${date}`,9,false);y-=18;
         if(client){text(ops,34,y,`Cliente: ${truncate(client,500,11,true)}`,11,true);y-=17;}
         if(address){text(ops,34,y,`Domicilio: ${truncate(address,490,9)}`,9,false);y-=17;}
         y-=5;
@@ -120,11 +129,13 @@
       text(ops,320,y,truncate(item.priceLabel,90,8),8,false);
       textRight(ops,468,y,money(item.unitPrice),8,false);textRight(ops,561,y,money(item.amount),8,true);y-=18;line(ops,34,y+6,561,y+6);
     }
-    ensure(85);y-=8;rect(ops,332,y-38,229,52,[.91,.97,.95]);
-    text(ops,346,y-6,'TOTAL',10,true,TEAL);textRight(ops,547,y-8,money(subtotal),15,true,INK);y-=55;
-    if(notes){text(ops,34,y,'Observaciones',9,true,TEAL);y-=15;const clean=truncate(notes,500,8);text(ops,34,y,clean,8,false);y-=20;}
+    ensure(120);y-=8;rect(ops,332,y-80,229,94,[.91,.97,.95]);
+    text(ops,346,y-6,'SUBTOTAL',9,true,TEAL);textRight(ops,561,y-6,money(subtotal),10,true,INK);
+    text(ops,346,y-31,`DESCUENTO ${Number(discountPercentage)||0}%`,9,true,TEAL);textRight(ops,561,y-31,`- ${money(discountAmount)}`,10,true,INK);
+    line(ops,346,y-45,561,y-45,[.65,.82,.77]);
+    text(ops,346,y-67,'TOTAL',11,true,TEAL);textRight(ops,561,y-68,money(total),16,true,INK);y-=99;
     text(ops,34,y,'Documento no válido como factura. Precios sujetos a confirmación.',7,false,[.35,.48,.46]);
-    return assemble(pages,pageW,pageH);
+    return assemble(pages,pageW,pageH,brand);
   }
 
   function download(bytes,filename,type){
@@ -142,5 +153,13 @@
     return {downloaded:true};
   }
 
-  window.RomaDocuments={buildPriceListPdf,buildQuotePdf,download,sharePdf};
+  function printPdf(bytes,target){
+    const blob=new Blob([bytes],{type:'application/pdf'}),url=URL.createObjectURL(blob),popup=target&&!target.closed?target:window.open('','_blank');
+    if(!popup){download(bytes,'documento.pdf','application/pdf');return {downloaded:true};}
+    popup.document.open();popup.document.write(`<!doctype html><html><head><title>Imprimir / PDF</title><style>html,body,iframe{margin:0;width:100%;height:100%;border:0}body{overflow:hidden}</style></head><body><iframe id="pdf" src="${url}"></iframe></body></html>`);popup.document.close();
+    const frame=popup.document.getElementById('pdf');frame.onload=()=>setTimeout(()=>{try{frame.contentWindow.focus();frame.contentWindow.print();}catch{popup.focus();popup.print();}setTimeout(()=>URL.revokeObjectURL(url),60000);},350);
+    return {opened:true};
+  }
+
+  window.RomaDocuments={buildPriceListPdf,buildQuotePdf,download,sharePdf,print:printPdf};
 })();
