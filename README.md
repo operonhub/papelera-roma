@@ -10,6 +10,7 @@ Aplicación de gestión de productos, precios y presupuestos conectada al proyec
 - Aumentos o descuentos por presentación, categoría o selección de productos.
 - Presupuesto en una sección independiente con descuento porcentual, numeración consecutiva en la nube, impresión/PDF, Excel y WhatsApp.
 - Selección completa y edición de nombres de categorías.
+- Edición de datos generales y desactivación recuperable de productos desde la lista.
 - Catálogo móvil en formato de fichas, sin desplazamiento horizontal.
 - Copias completas de cada lista guardadas y restauradas desde la nube.
 - Historial de cambios de precios.

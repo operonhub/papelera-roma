@@ -84,7 +84,7 @@ function bindStatic(){
   $('#search').oninput=event=>{state.filters.search=event.target.value;clearTimeout(searchTimer);searchTimer=setTimeout(renderCatalog,100);};
   $('#category-filter').onchange=event=>{state.filters.category=event.target.value;renderCatalog();};
   $('#catalog').onchange=event=>{if(event.target.matches('.product-check'))toggleSelection(event.target);if(event.target.matches('.category-check'))toggleCategorySelection(event.target);if(event.target.matches('.price-input'))updatePrice(event.target);};
-  $('#catalog').onclick=event=>{const button=event.target.closest('[data-edit-category-id]');if(button)openRenameCategory(Number(button.dataset.editCategoryId),button.dataset.editCategoryName);};
+  $('#catalog').onclick=event=>{const productButton=event.target.closest('[data-edit-product-id]');if(productButton)return openEditProduct(productButton.dataset.editProductId);const categoryButton=event.target.closest('[data-edit-category-id]');if(categoryButton)openRenameCategory(Number(categoryButton.dataset.editCategoryId),categoryButton.dataset.editCategoryName);};
   $('#catalog').onfocusin=event=>{if(event.target.matches('.price-input'))event.target.select();};
   $('#catalog').onkeydown=event=>{if(event.target.matches('.price-input')&&event.key==='Enter')event.target.blur();};
   $('#new-product').onclick=openNewProduct;$('#download-excel').onclick=()=>downloadExcel(filtered());$('#print-price-list').onclick=printPriceList;$('#share-price-list').onclick=sharePriceList;$('#manage-categories').onclick=openCategoryManager;$('#save-backup').onclick=saveBackup;$('#view-backups').onclick=openBackups;$('#open-increase').onclick=()=>openIncrease(false);$('#selection-increase').onclick=()=>openIncrease(true);$('#selection-quote').onclick=()=>openQuote(true);$('#clear-selection').onclick=()=>{state.selected.clear();renderCatalog();};
@@ -137,7 +137,7 @@ function renderCatalog(){
 
 function productRow(product){
   const fields=priceFieldsFor(product.catalogo),prices=fields.map(field=>`<div class="price-wrap"><span class="mobile-price-label">${field.label} ($)</span><input class="price-input" data-id="${product.id}" data-tier="${field.tier}" value="${priceInput(product[field.key])}" inputmode="numeric" placeholder="—" aria-label="Precio ${field.label} de ${esc(product.nombre)}"></div>`).join(''),detail=product.catalogo==='heladeria'?`<div class="bulk-quantity"><span class="mobile-price-label">Cantidad / presentación</span><span>${esc(product.presentacion||'—')}</span></div>${prices}`:`${prices}<div class="bulk-quantity"><span class="mobile-price-label">Contenido del bulto</span><span>${esc(product.cantidad_bulto||'—')}</span></div>`;
-  return `<div class="product-row"><input class="product-check" type="checkbox" data-id="${product.id}" ${state.selected.has(product.id)?'checked':''} aria-label="Seleccionar ${esc(product.nombre)}"><div class="product-info"><strong>${esc(product.nombre)}</strong>${product.observaciones?`<small><span class="product-note">${esc(product.observaciones)}</span></small>`:''}</div>${detail}</div>`;
+  return `<div class="product-row"><input class="product-check" type="checkbox" data-id="${product.id}" ${state.selected.has(product.id)?'checked':''} aria-label="Seleccionar ${esc(product.nombre)}"><div class="product-info"><div class="product-title-row"><strong>${esc(product.nombre)}</strong><button type="button" class="product-edit" data-edit-product-id="${product.id}" aria-label="Editar producto ${esc(product.nombre)}">Editar</button></div>${product.observaciones?`<small><span class="product-note">${esc(product.observaciones)}</span></small>`:''}</div>${detail}</div>`;
 }
 
 function toggleSelection(input){input.checked?state.selected.add(input.dataset.id):state.selected.delete(input.dataset.id);updateSelectionBar();syncCategoryChecks();}
@@ -190,6 +190,40 @@ async function createProduct(event){
     else{await rpc('papelera_create_product',{p_name:name,p_category:category,p_bulk_quantity:bulk,p_presentation:presentation,p_notes:$('#product-notes').value.trim(),p_prices:prices,p_catalog_slug:state.catalog});await loadCloudData();}
     closePanel();renderAll();showToast(`${name} fue agregado.`);
   }catch(failure){error.textContent=readableError(failure);error.hidden=false;button.disabled=false;button.textContent='Guardar producto';}
+}
+
+function productFormFields(product){
+  return product.catalogo==='heladeria'?`<div class="field"><label for="product-presentation">Cantidad / presentación</label><input id="product-presentation" maxlength="160" value="${esc(product.presentacion)}" placeholder="Ej: Caja x 100"></div>`:`<div class="field"><label for="product-bulk">Contenido del bulto</label><input id="product-bulk" maxlength="160" value="${esc(product.cantidad_bulto)}" placeholder="Ej: 12 paquetes x 100"></div>`;
+}
+
+function openEditProduct(id){
+  const product=state.products.find(item=>item.id===id);if(!product)return;
+  const categories=unique('categoria',state.products.filter(item=>item.catalogo===product.catalogo));
+  $('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel" role="dialog" aria-modal="true"><div class="panel-head"><div><h2>Editar producto · ${esc(CATALOGS[product.catalogo]?.name||product.catalogo)}</h2><p>Corregí los datos generales. Los precios se editan directamente desde la lista.</p></div><button class="icon-close" data-close>×</button></div><form id="edit-product-form"><div class="product-form"><div class="field field-wide"><label for="edit-product-name">Nombre <span class="required">*</span></label><input id="edit-product-name" maxlength="240" value="${esc(product.nombre)}" required></div><div class="field field-wide"><label for="edit-product-category">Categoría <span class="required">*</span></label><input id="edit-product-category" maxlength="120" list="edit-category-options" value="${esc(product.categoria)}" required><datalist id="edit-category-options">${categories.map(value=>`<option value="${esc(value)}"></option>`).join('')}</datalist></div>${productFormFields(product)}<div class="field field-wide"><label for="edit-product-notes">Observaciones</label><input id="edit-product-notes" maxlength="500" value="${esc(product.observaciones)}" placeholder="Opcional"></div></div><div id="edit-product-error" class="form-error" hidden></div><div class="panel-actions product-edit-actions"><button class="btn btn-danger" id="product-deactivate" type="button">Desactivar producto</button><div><button class="btn btn-quiet" type="button" data-close>Cancelar</button><button class="btn btn-accent" id="edit-product-submit" type="submit">Guardar cambios</button></div></div></form></section></div>`;
+  bindPanelClose();$('#edit-product-form').onsubmit=event=>updateProduct(event,product);$('#product-deactivate').onclick=()=>confirmDeactivateProduct(product);setTimeout(()=>{$('#edit-product-name')?.focus();$('#edit-product-name')?.select();},50);
+}
+
+async function updateProduct(event,product){
+  event.preventDefault();const name=$('#edit-product-name').value.trim(),category=$('#edit-product-category').value.trim(),bulk=$('#product-bulk')?.value.trim()||'',presentation=$('#product-presentation')?.value.trim()||'',notes=$('#edit-product-notes').value.trim(),error=$('#edit-product-error'),button=$('#edit-product-submit');
+  if(!name||!category){error.textContent='Completá nombre y categoría.';error.hidden=false;return;}button.disabled=true;button.textContent='Guardando…';
+  try{
+    if(state.preview){Object.assign(product,{nombre:name,categoria:category,cantidad_bulto:bulk,presentacion:presentation,observaciones:notes});}
+    else{await rpc('papelera_update_product',{p_product_id:product.id,p_name:name,p_category:category,p_bulk_quantity:bulk,p_presentation:presentation,p_notes:notes});await loadCloudData();}
+    closePanel();renderAll();showToast(`${name} fue actualizado.`);
+  }catch(failure){error.textContent=readableError(failure);error.hidden=false;button.disabled=false;button.textContent='Guardar cambios';}
+}
+
+function confirmDeactivateProduct(product){
+  $('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel" role="dialog" aria-modal="true"><div class="confirm-card"><div class="confirm-icon">×</div><h2>Desactivar producto</h2><p><strong>${esc(product.nombre)}</strong> dejará de aparecer en la lista y en los presupuestos. Sus datos y precios no se borrarán de la nube.</p><div class="panel-actions"><button class="btn btn-quiet" id="deactivate-cancel">Volver</button><button class="btn btn-danger" id="deactivate-confirm">Desactivar</button></div></div></section></div>`;
+  $('#deactivate-cancel').onclick=()=>openEditProduct(product.id);$('#deactivate-confirm').onclick=()=>deactivateProduct(product);
+}
+
+async function deactivateProduct(product){
+  const button=$('#deactivate-confirm');button.disabled=true;button.textContent='Desactivando…';
+  try{
+    if(state.preview)product.activo=false;else{await rpc('papelera_deactivate_product',{p_product_id:product.id});await loadCloudData();}
+    state.selected.delete(product.id);state.quote.items=state.quote.items.filter(item=>item.id!==product.id);if(state.preview)state.products=state.products.filter(item=>item.id!==product.id);closePanel();renderAll();showToast(`${product.nombre} fue desactivado.`);
+  }catch(failure){showToast(readableError(failure));button.disabled=false;button.textContent='Desactivar';}
 }
 
 function targetProducts(){
