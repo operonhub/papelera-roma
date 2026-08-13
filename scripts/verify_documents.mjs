@@ -35,6 +35,10 @@ const listBytes = await docs.buildPriceListPdf({
   date: "12/08/2026",
   priceFields,
 });
+const heladeriaCsvText=await fs.readFile(new URL('data/productos_heladeria.csv',root),'utf8');
+const heladeriaWorkbook=await Workbook.fromCSV(heladeriaCsvText,{sheetName:'Heladería'}),heladeriaValues=heladeriaWorkbook.worksheets.getItemAt(0).getUsedRange().values,heladeriaHeaders=heladeriaValues[0].map(String);
+const heladeriaProducts=heladeriaValues.slice(1).map(row=>{const product=Object.fromEntries(heladeriaHeaders.map((header,index)=>[header,row[index]??'']));product.precio=product.precio===''?null:Number(product.precio);return product;});
+const heladeriaListBytes=await docs.buildPriceListPdf({items:heladeriaProducts,title:'Heladería · Lista completa',date:'13/08/2026',priceFields:[{key:'precio',label:'Precio'}],detailKey:'presentacion',detailLabel:'Cantidad / presentación'});
 const quoteItems = products.slice(0, 3).map((product, index) => {
   const field = priceFields.find(({ key }) => typeof product[key] === "number");
   const quantity = index + 1;
@@ -61,6 +65,7 @@ quote.discountAmount = Math.round(quote.subtotal * quote.discountPercentage / 10
 quote.total = quote.subtotal - quote.discountAmount;
 const quoteBytes = await docs.buildQuotePdf(quote);
 await fs.writeFile(new URL("lista-verificacion.pdf", tmpDir), listBytes);
+await fs.writeFile(new URL('lista-heladeria-verificacion.pdf',tmpDir),heladeriaListBytes);
 await fs.writeFile(new URL("presupuesto-verificacion.pdf", tmpDir), quoteBytes);
 
 const appContext = {
@@ -93,6 +98,7 @@ const audit = await workbook.inspect({
 console.log(JSON.stringify({
   productsUsed: products.length,
   listPdfBytes: listBytes.length,
+  heladeriaListPdfBytes:heladeriaListBytes.length,
   quotePdfBytes: quoteBytes.length,
   quoteTotal: quote.total,
   quoteExcelHasFormula: quoteXml.includes('ss:Formula="=RC[-6]*RC[-1]"'),

@@ -66,15 +66,16 @@
     const bytes=new Uint8Array(out.length);for(let i=0;i<out.length;i++)bytes[i]=out.charCodeAt(i)&255;return bytes;
   }
 
-  async function buildPriceListPdf({items,title,client,date,priceFields}){
+  async function buildPriceListPdf({items,title,client,date,priceFields,detailKey,detailLabel}){
     const brand=await loadBrand();
     const [pageW,pageH]=A4.landscape,pages=[];let ops,y;
-    const cols={name:34,prices:[500,574,648,722,808],right:808};
+    const compact=Boolean(detailKey&&priceFields.length===1),cols={name:34,detail:500,prices:compact?[808]:[500,574,648,722,808],right:808};
     const groups=new Map();
     [...items].sort((a,b)=>a.categoria.localeCompare(b.categoria,'es',{sensitivity:'base',numeric:true})||a.nombre.localeCompare(b.nombre,'es',{sensitivity:'base',numeric:true})).forEach(p=>{if(!groups.has(p.categoria))groups.set(p.categoria,[]);groups.get(p.categoria).push(p);});
     function tableHeader(){
       rect(ops,30,y-5,pageW-60,19,[.89,.95,.93]);
       text(ops,cols.name,y,'Producto',8,true);
+      if(compact)text(ops,cols.detail,y,detailLabel||'Cantidad / presentaciÃ³n',8,true);
       priceFields.forEach((field,i)=>textRight(ops,cols.prices[i],y,field.label,8,true));y-=23;
     }
     function newPage(){
@@ -93,7 +94,8 @@
     for(const [category,products] of groups){
       ensure(34);rect(ops,30,y-6,pageW-60,20,[.82,.93,.89]);text(ops,34,y,truncate(category,740,9,true),9,true,TEAL);y-=24;
       for(const p of products){
-        ensure(24);text(ops,cols.name,y,truncate(p.nombre,400,8),8,false);
+        ensure(24);text(ops,cols.name,y,truncate(p.nombre,compact?430:400,8),8,false);
+        if(compact)text(ops,cols.detail,y,truncate(p[detailKey]||'-',190,8),8,false);
         priceFields.forEach((field,i)=>{const value=p[field.key];textRight(ops,cols.prices[i],y,typeof value==='number'?money(value):'-',8,false);});
         line(ops,34,y-9,pageW-34,y-9);y-=22;
       }

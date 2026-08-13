@@ -4,8 +4,9 @@ Aplicación de gestión de productos, precios y presupuestos conectada al proyec
 
 ## Funcionalidad
 
-- Dos listas independientes almacenadas en Supabase: Papelería (2.219 productos y 5.949 precios) y Heladería (87 productos y 41 precios informados).
+- Dos listas independientes almacenadas en Supabase: Papelería (2.219 productos y 5.949 precios) y Heladería (90 productos, 18 categorías y 73 precios informados).
 - Cinco presentaciones vendibles: Unidad, Pack x10, Pack x50, Pack x100 y Bulto.
+- Heladería conserva su formato original de Producto, Cantidad/Presentación y Precio, incluidos los ceros explícitos y los precios realmente vacíos.
 - Aumentos o descuentos por presentación, categoría o selección de productos.
 - Presupuesto en una sección independiente con descuento porcentual, numeración consecutiva en la nube, impresión/PDF, Excel y WhatsApp.
 - Selección completa y edición de nombres de categorías.
