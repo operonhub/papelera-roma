@@ -45,6 +45,7 @@ button{color:inherit}
 .action-stack{display:grid;flex:0 1 800px;gap:0;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.72);overflow:hidden}
 .action-group{display:grid;grid-template-columns:112px 1fr;gap:12px;align-items:start;padding:11px 12px;border-top:1px solid var(--line)}
 .action-group:first-child{border-top:0}.action-label{padding-top:10px;color:var(--muted);font-size:9px;font-weight:900;letter-spacing:.08em}
+.action-group-primary{background:linear-gradient(90deg,rgba(7,127,132,.08),rgba(255,184,0,.08))}.action-group-primary .action-label{color:var(--ink)}
 .action-buttons{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
 .category-select{min-width:0;flex:1;display:flex;align-items:center;gap:9px;cursor:pointer}.category-select strong{min-width:0}
 .category-check{width:17px;height:17px;flex:0 0 auto;accent-color:var(--petrol-2)}
