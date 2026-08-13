@@ -7,6 +7,9 @@
   <meta name="theme-color" content="#073f43">
   <title>Papelera Roma · Gestión comercial</title>
   <link rel="icon" href="assets/logo-papelera-roma.png" type="image/png">
+  <script>
+    (()=>{try{document.documentElement.dataset.theme=localStorage.getItem('papelera-roma-theme')==='dark'?'dark':'light';}catch{document.documentElement.dataset.theme='light';}})();
+  </script>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -16,7 +19,13 @@
         <img class="brand-logo" src="assets/logo-papelera-roma.png" alt="Logo de Papelera Roma">
         <div><strong>Papelera Roma</strong><small>Productos · Precios · Presupuestos</small></div>
       </div>
-      <span class="user-chip" id="auth-button">Acceso público</span>
+      <div class="header-actions">
+        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Activar modo nocturno" title="Activar modo nocturno" aria-pressed="false">
+          <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.66 6.34l1.41-1.41"/></svg>
+          <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.7 14.2A8.5 8.5 0 0 1 9.8 3.3 8.5 8.5 0 1 0 20.7 14.2Z"/></svg>
+        </button>
+        <span class="user-chip" id="auth-button">Acceso público</span>
+      </div>
     </div>
     <div class="container app-tabs" role="tablist" aria-label="Secciones">
       <button class="app-tab active" id="catalog-tab" role="tab" aria-selected="true" data-view="catalog">Lista de precios</button>

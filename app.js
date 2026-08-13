@@ -16,6 +16,7 @@ const state={
   filters:{search:'',category:''},increase:{scope:'all',percentage:10,tiers:new Set(PAPELERA_PRICE_FIELDS.map(x=>x.tier))},
   quote:null,view:'catalog',busy:false,previewQuoteNumber:0,
 };
+const THEME_KEY='papelera-roma-theme';
 const $=selector=>document.querySelector(selector);
 const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const money=value=>new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(Number(value)||0);
@@ -79,6 +80,8 @@ async function init(){
 }
 
 function bindStatic(){
+  applyTheme(document.documentElement.dataset.theme);
+  $('#theme-toggle').onclick=toggleTheme;
   document.querySelectorAll('[data-view]').forEach(button=>button.onclick=()=>goView(button.dataset.view));
   document.querySelectorAll('[data-catalog]').forEach(button=>button.onclick=()=>setCatalog(button.dataset.catalog));
   let searchTimer;
@@ -136,6 +139,23 @@ function renderCatalog(){
   const fields=priceFieldsFor(state.catalog),heladeria=state.catalog==='heladeria';
   $('#catalog').innerHTML=categories.map(category=>{const products=items.filter(product=>product.categoria===category).sort(byProductOrder),categoryId=products[0]?.categoria_id??'',headers=heladeria?`<span>Cantidad / presentación</span>${fields.map(field=>`<span>${field.label}</span>`).join('')}`:`${fields.map(field=>`<span>${field.label}</span>`).join('')}<span>Contenido del bulto</span>`;return `<section class="category-block ${state.catalog}"><div class="category-heading"><label class="category-select"><input class="category-check" type="checkbox" data-category="${esc(category)}" aria-label="Seleccionar categoría ${esc(category)}"><strong>${esc(category)}</strong></label><div class="category-tools"><span>${number(products.length)}</span><button type="button" data-order-category-id="${categoryId}" data-order-category-name="${esc(category)}" aria-label="Ordenar productos de ${esc(category)}">Ordenar productos</button><button type="button" data-edit-category-id="${categoryId}" data-edit-category-name="${esc(category)}" aria-label="Editar categoría ${esc(category)}">Editar nombre</button></div></div><div class="price-columns-header"><span></span><span>Producto</span>${headers}<span></span></div>${products.map(productRow).join('')}</section>`;}).join('');updateSelectionBar();syncCategoryChecks();
 }
+
+function applyTheme(theme,{persist=false}={}){
+  const selected=theme==='dark'?'dark':'light',dark=selected==='dark';
+  document.documentElement.dataset.theme=selected;
+  document.documentElement.style.colorScheme=selected;
+  const button=$('#theme-toggle');
+  if(button){
+    const action=dark?'Activar modo claro':'Activar modo nocturno';
+    button.setAttribute('aria-label',action);
+    button.setAttribute('title',action);
+    button.setAttribute('aria-pressed',String(dark));
+  }
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content',dark?'#07151d':'#073f43');
+  if(persist){try{localStorage.setItem(THEME_KEY,selected);}catch{}}
+}
+
+function toggleTheme(){applyTheme(document.documentElement.dataset.theme==='dark'?'light':'dark',{persist:true});}
 
 function productActionIcon(kind){return kind==='edit'?'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>':'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg>';}
 
