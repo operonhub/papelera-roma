@@ -34,7 +34,6 @@
     rect(ops,0,pageH-74,pageW,74,TEAL);
     image(ops,28,pageH-67,58,58);
     text(ops,98,pageH-35,'PAPELERA ROMA',17,true,[1,1,1]);
-    text(ops,98,pageH-51,'Monte Chingolo',8,false,[.86,.96,.94]);
     textRight(ops,pageW-34,pageH-36,kind,12,true,[1,1,1]);
     if(subtitle)textRight(ops,pageW-34,pageH-51,truncate(subtitle,260,8),8,false,[.86,.96,.94]);
   }
@@ -70,13 +69,13 @@
   async function buildPriceListPdf({items,title,client,date,priceFields}){
     const brand=await loadBrand();
     const [pageW,pageH]=A4.landscape,pages=[];let ops,y;
-    const cols={name:34,prices:[440,510,580,650,720],right:808};
+    const cols={name:34,prices:[500,574,648,722,808],right:808};
     const groups=new Map();
     [...items].sort((a,b)=>a.categoria.localeCompare(b.categoria,'es',{sensitivity:'base',numeric:true})||a.nombre.localeCompare(b.nombre,'es',{sensitivity:'base',numeric:true})).forEach(p=>{if(!groups.has(p.categoria))groups.set(p.categoria,[]);groups.get(p.categoria).push(p);});
     function tableHeader(){
       rect(ops,30,y-5,pageW-60,19,[.89,.95,.93]);
       text(ops,cols.name,y,'Producto',8,true);
-      priceFields.forEach((field,i)=>textRight(ops,cols.prices[i]+56,y,field.label,8,true));y-=20;
+      priceFields.forEach((field,i)=>textRight(ops,cols.prices[i],y,field.label,8,true));y-=23;
     }
     function newPage(){
       ops=[];pages.push(ops);brandHeader(ops,pageW,pageH,'LISTA DE PRECIOS',title||'Precios vigentes');
@@ -92,11 +91,11 @@
     function ensure(space=18){if(y<46+space)newPage();}
     newPage();
     for(const [category,products] of groups){
-      ensure(32);rect(ops,30,y-5,pageW-60,18,[.82,.93,.89]);text(ops,34,y,truncate(category,740,9,true),9,true,TEAL);y-=19;
+      ensure(34);rect(ops,30,y-6,pageW-60,20,[.82,.93,.89]);text(ops,34,y,truncate(category,740,9,true),9,true,TEAL);y-=24;
       for(const p of products){
-        ensure();text(ops,cols.name,y,truncate(p.nombre,385,8),8,false);
-        priceFields.forEach((field,i)=>{const value=p[field.key];textRight(ops,cols.prices[i]+56,y,typeof value==='number'?money(value):'-',8,false);});
-        y-=17;line(ops,34,y+5,pageW-34,y+5);
+        ensure(24);text(ops,cols.name,y,truncate(p.nombre,400,8),8,false);
+        priceFields.forEach((field,i)=>{const value=p[field.key];textRight(ops,cols.prices[i],y,typeof value==='number'?money(value):'-',8,false);});
+        line(ops,34,y-9,pageW-34,y-9);y-=22;
       }
     }
     return assemble(pages,pageW,pageH,brand);
@@ -107,11 +106,11 @@
     const [pageW,pageH]=A4.portrait,pages=[];let ops,y;
     function tableHeader(){
       rect(ops,30,y-5,pageW-60,20,[.89,.95,.93]);
-      text(ops,34,y,'Cant.',8,true);text(ops,70,y,'Producto',8,true);text(ops,320,y,'Presentación',8,true);
-      textRight(ops,468,y,'Precio',8,true);textRight(ops,561,y,'Importe',8,true);y-=22;
+      text(ops,36,y,'Cant.',8,true);text(ops,76,y,'Producto',8,true);text(ops,330,y,'Presentación',8,true);
+      textRight(ops,472,y,'Precio',8,true);textRight(ops,558,y,'Importe',8,true);y-=24;
     }
     function newPage(){
-      ops=[];pages.push(ops);brandHeader(ops,pageW,pageH,'PRESUPUESTO',number?`N° ${number}`:'');
+      ops=[];pages.push(ops);brandHeader(ops,pageW,pageH,'PRESUPUESTO',number?`N.º ${number}`:'');
       y=pageH-98;
       if(pages.length===1){
         text(ops,34,y,`Fecha: ${date}`,9,false);y-=18;
@@ -124,16 +123,17 @@
     function ensure(space=20){if(y<64+space)newPage();}
     newPage();
     for(const item of items){
-      ensure();text(ops,34,y,String(item.quantity),8,false);
-      text(ops,70,y,truncate(item.name,238,8),8,false);
-      text(ops,320,y,truncate(item.priceLabel,90,8),8,false);
-      textRight(ops,468,y,money(item.unitPrice),8,false);textRight(ops,561,y,money(item.amount),8,true);y-=18;line(ops,34,y+6,561,y+6);
+      ensure(24);text(ops,36,y,String(item.quantity),8,false);
+      text(ops,76,y,truncate(item.name,238,8),8,false);
+      text(ops,330,y,truncate(item.priceLabel,102,8),8,false);
+      textRight(ops,472,y,money(item.unitPrice),8,false);textRight(ops,558,y,money(item.amount),8,true);
+      line(ops,34,y-9,561,y-9);y-=22;
     }
-    ensure(120);y-=8;rect(ops,332,y-80,229,94,[.91,.97,.95]);
-    text(ops,346,y-6,'SUBTOTAL',9,true,TEAL);textRight(ops,561,y-6,money(subtotal),10,true,INK);
-    text(ops,346,y-31,`DESCUENTO ${Number(discountPercentage)||0}%`,9,true,TEAL);textRight(ops,561,y-31,`- ${money(discountAmount)}`,10,true,INK);
-    line(ops,346,y-45,561,y-45,[.65,.82,.77]);
-    text(ops,346,y-67,'TOTAL',11,true,TEAL);textRight(ops,561,y-68,money(total),16,true,INK);y-=99;
+    ensure(116);y-=10;rect(ops,350,y-78,211,92,[.91,.97,.95]);
+    text(ops,365,y-5,'SUBTOTAL',9,true,TEAL);textRight(ops,558,y-5,money(subtotal),10,true,INK);
+    text(ops,365,y-29,`DESCUENTO ${Number(discountPercentage)||0}%`,9,true,TEAL);textRight(ops,558,y-29,`- ${money(discountAmount)}`,10,true,INK);
+    line(ops,365,y-43,558,y-43,[.65,.82,.77]);
+    text(ops,365,y-64,'TOTAL',10,true,TEAL);textRight(ops,558,y-65,money(total),14,true,INK);y-=97;
     text(ops,34,y,'Documento no válido como factura. Precios sujetos a confirmación.',7,false,[.35,.48,.46]);
     return assemble(pages,pageW,pageH,brand);
   }

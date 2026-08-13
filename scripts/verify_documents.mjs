@@ -23,11 +23,12 @@ const products = values.slice(1).map((row) => {
   return product;
 });
 
-const documentContext = { window: {} };
+const brandBytes = await fs.readFile(new URL("assets/logo-papelera-roma-pdf.jpg", root));
+const documentContext = { window: {}, fetch: async () => ({ ok: true, arrayBuffer: async () => brandBytes.buffer.slice(brandBytes.byteOffset, brandBytes.byteOffset + brandBytes.byteLength) }) };
 vm.createContext(documentContext);
 vm.runInContext(await fs.readFile(new URL("documentos.js", root), "utf8"), documentContext);
 const docs = documentContext.window.RomaDocuments;
-const listBytes = docs.buildPriceListPdf({
+const listBytes = await docs.buildPriceListPdf({
   items: products,
   title: "Lista para comercios",
   client: "Cliente de prueba",
@@ -48,16 +49,17 @@ const quoteItems = products.slice(0, 3).map((product, index) => {
   };
 });
 const quote = {
-  number: "123456",
+  number: "1",
   client: "Almacén Don José",
-  address: "Monte Chingolo",
-  validity: "7 días",
-  notes: "Entrega a coordinar. Precios sujetos a confirmación.",
+  address: "Domicilio de prueba",
   date: "12/08/2026",
   items: quoteItems,
   subtotal: quoteItems.reduce((sum, item) => sum + item.amount, 0),
 };
-const quoteBytes = docs.buildQuotePdf(quote);
+quote.discountPercentage = 10;
+quote.discountAmount = Math.round(quote.subtotal * quote.discountPercentage / 100);
+quote.total = quote.subtotal - quote.discountAmount;
+const quoteBytes = await docs.buildQuotePdf(quote);
 await fs.writeFile(new URL("lista-verificacion.pdf", tmpDir), listBytes);
 await fs.writeFile(new URL("presupuesto-verificacion.pdf", tmpDir), quoteBytes);
 
@@ -92,7 +94,7 @@ console.log(JSON.stringify({
   productsUsed: products.length,
   listPdfBytes: listBytes.length,
   quotePdfBytes: quoteBytes.length,
-  quoteTotal: quote.subtotal,
+  quoteTotal: quote.total,
   quoteExcelHasFormula: quoteXml.includes('ss:Formula="=RC[-6]*RC[-1]"'),
   sourcePreview: audit.ndjson,
 }));

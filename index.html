@@ -28,15 +28,29 @@
     <section class="app-view active" id="catalog-view" role="tabpanel" aria-labelledby="catalog-tab">
       <div class="page-heading">
         <div><p class="eyebrow">CATÁLOGO</p><h1>Productos y precios</h1><p>Editá un importe directamente o elegí productos para trabajar en conjunto.</p></div>
-        <div class="page-actions">
-          <button class="btn btn-primary" id="new-product">＋ Nuevo producto</button>
-          <button class="btn btn-secondary" id="download-excel">⇩ Descargar Excel</button>
-          <button class="btn btn-secondary" id="print-price-list">Imprimir / PDF</button>
-          <button class="btn btn-whatsapp" id="share-price-list">WhatsApp</button>
-          <button class="btn btn-secondary" id="save-backup">☁ Guardar copia</button>
-          <button class="btn btn-secondary" id="view-backups">Ver copias <span class="button-count" id="backup-count">0</span></button>
-          <button class="btn btn-secondary" id="open-history">Historial</button>
-          <button class="btn btn-accent" id="open-increase">↗ Aumentar precios</button>
+        <div class="page-actions action-stack">
+          <div class="action-group">
+            <span class="action-label">PRODUCTOS</span>
+            <div class="action-buttons"><button class="btn btn-primary" id="new-product">＋ Nuevo producto</button></div>
+          </div>
+          <div class="action-group">
+            <span class="action-label">LISTA Y PRECIOS</span>
+            <div class="action-buttons">
+              <button class="btn btn-secondary" id="download-excel">⇩ Descargar Excel</button>
+              <button class="btn btn-secondary" id="print-price-list">Imprimir lista / PDF</button>
+              <button class="btn btn-whatsapp" id="share-price-list">Enviar lista por WhatsApp</button>
+              <button class="btn btn-secondary" id="manage-categories">Editar categorías</button>
+              <button class="btn btn-secondary" id="open-history">Historial</button>
+              <button class="btn btn-accent" id="open-increase">↗ Aumentar precios</button>
+            </div>
+          </div>
+          <div class="action-group">
+            <span class="action-label">COPIAS EN LA NUBE</span>
+            <div class="action-buttons">
+              <button class="btn btn-secondary" id="save-backup">☁ Guardar copia</button>
+              <button class="btn btn-secondary" id="view-backups">Ver copias guardadas <span class="button-count" id="backup-count">0</span></button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -96,7 +110,7 @@
         </section>
 
         <section class="workspace-card quote-output">
-          <div><h2>Exportar presupuesto</h2><p>El número se genera automáticamente recién al exportar o compartir.</p></div>
+          <div><h2>Emitir presupuesto</h2><p>Cada impresión, descarga o envío genera el próximo número consecutivo.</p></div>
           <div class="document-actions">
             <button class="btn btn-dark" id="quote-pdf">Imprimir / PDF</button>
             <button class="btn btn-secondary" id="quote-excel">Descargar Excel</button>

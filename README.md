@@ -7,7 +7,9 @@ Aplicación de gestión de productos, precios y presupuestos conectada al proyec
 - Catálogo de 2.212 productos y 5.940 precios almacenados en Supabase.
 - Cinco presentaciones vendibles: Unidad, Pack x10, Pack x50, Pack x100 y Bulto.
 - Aumentos o descuentos por presentación, categoría o selección de productos.
-- Presupuesto en una sección independiente con descuento porcentual, numeración automática, impresión/PDF, Excel y WhatsApp.
+- Presupuesto en una sección independiente con descuento porcentual, numeración consecutiva en la nube, impresión/PDF, Excel y WhatsApp.
+- Selección completa y edición de nombres de categorías.
+- Catálogo móvil en formato de fichas, sin desplazamiento horizontal.
 - Copias completas del catálogo guardadas y restauradas desde la nube.
 - Historial de cambios de precios.
 - Acceso público sin autenticación a todas las funciones de la aplicación, incluidas altas, precios y copias en la nube.
