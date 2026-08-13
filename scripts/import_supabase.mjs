@@ -2,16 +2,17 @@ import fs from 'node:fs/promises';
 import crypto from 'node:crypto';
 
 const SOURCE='data/productos_papelera_roma.csv';
-const SOURCE_XLSX_SHA256='425997527EF78FA9743B60DB4F505A8ADB75B8A0F19D5304BFB50F698C74E58F';
+const SOURCE_XLSX_SHA256='763E73FE315BB14F83DE2632B4AC535CFA759814A4B763BFCF5D7598E87BA8E2';
+const CATALOG_SLUG='papelera';
 const EXPECTED={
-  products:2212,
+  products:2219,
   categories:99,
   prices:{
-    unidad:{count:1755,sum:5553380},
-    x10:{count:1409,sum:11434580},
-    x50:{count:552,sum:15357900},
-    x100:{count:525,sum:9631630},
-    bulto:{count:1699,sum:191224648},
+    unidad:{count:1758,sum:5579580},
+    x10:{count:1410,sum:11445280},
+    x50:{count:552,sum:15357400},
+    x100:{count:526,sum:9699930},
+    bulto:{count:1703,sum:191951148},
   },
 };
 const PRICE_COLUMNS={unidad:'precio_unidad',x10:'precio_10',x50:'precio_50',x100:'precio_100',bulto:'precio_bulto'};
@@ -101,12 +102,15 @@ async function fetchAll(path,pageSize=1000){
 
 let importJobId=null;
 try{
-  const jobs=await api('import_jobs',{method:'POST',prefer:'return=representation',body:[{source_file:'Papelera Roma  10-08-2026.xlsx / Hoja 1',source_sha256:SOURCE_XLSX_SHA256,transformed_sha256:transformedSha256,status:'running',product_count:localControls.products,category_count:localControls.categories,price_count:localControls.priceCount,controls:{local:localControls}}]});
+  const catalogs=await api(`catalogs?select=id,slug&slug=eq.${CATALOG_SLUG}&limit=1`);
+  const catalogId=catalogs[0]?.id;
+  if(!catalogId)throw new Error(`No existe el catálogo ${CATALOG_SLUG}.`);
+  const jobs=await api('import_jobs',{method:'POST',prefer:'return=representation',body:[{catalog_id:catalogId,source_file:'Papelera Roma  12-08-2026 (1).xlsx / Hoja1',source_sha256:SOURCE_XLSX_SHA256,transformed_sha256:transformedSha256,status:'running',product_count:localControls.products,category_count:localControls.categories,price_count:localControls.priceCount,controls:{local:localControls}}]});
   importJobId=jobs[0].id;
 
   const categoryNames=[...new Set(rows.map(row=>row.categoria))].sort((a,b)=>a.localeCompare(b,'es',{sensitivity:'base',numeric:true}));
-  await api('categories?on_conflict=name',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:categoryNames.map(name=>({name,active:true}))});
-  const categories=await fetchAll('categories?select=id,name&order=name.asc');
+  await api('categories?on_conflict=catalog_id,name',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:categoryNames.map(name=>({catalog_id:catalogId,name,active:true}))});
+  const categories=await fetchAll(`categories?select=id,name&catalog_id=eq.${catalogId}&order=name.asc`);
   const categoryIds=new Map(categories.map(category=>[category.name,category.id]));
 
   const supplierNames=[...new Set(rows.map(row=>row.proveedor).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es',{sensitivity:'base',numeric:true}));
@@ -115,6 +119,7 @@ try{
   const supplierIds=new Map(suppliers.map(supplier=>[supplier.name,supplier.id]));
 
   const productPayload=rows.map(row=>({
+    catalog_id:catalogId,
     code:row.codigo,
     name:row.nombre,
     category_id:categoryIds.get(row.categoria),
@@ -127,7 +132,7 @@ try{
   if(productPayload.some(product=>!product.category_id))throw new Error('Hay productos sin categoria resuelta.');
   await chunks(productPayload,250,part=>api('products?on_conflict=code',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:part}));
 
-  const products=await fetchAll('products?select=id,code');
+  const products=await fetchAll(`products?select=id,code&catalog_id=eq.${catalogId}`);
   const importedCodeSet=new Set(rows.map(row=>row.codigo));
   const importedProducts=products.filter(product=>importedCodeSet.has(product.code));
   if(importedProducts.length!==EXPECTED.products)throw new Error(`Productos recuperados de Supabase: ${importedProducts.length}/${EXPECTED.products}`);

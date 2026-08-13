@@ -1,8 +1,8 @@
 import fs from 'node:fs/promises';
 import { FileBlob, SpreadsheetFile, Workbook } from '@oai/artifact-tool';
 
-const source='C:/Users/Boste/Downloads/Papelera Roma  10-08-2026.xlsx';
-const outDir='.analysis/papelera-roma-client';
+const source='C:/Users/Boste/Downloads/Papelera Roma  12-08-2026 (1).xlsx';
+const outDir='.analysis/papelera-roma-2026-08-12';
 await fs.mkdir(outDir,{recursive:true});
 const input=await FileBlob.load(source);
 const workbook=await SpreadsheetFile.importXlsx(input);
@@ -16,7 +16,7 @@ console.log('---SHEETS---');
 console.log(sheets.ndjson);
 
 const firstSheet=workbook.worksheets.getItemAt(0);
-const logicalRange='A1:K3111';
+const logicalRange='A1:K3113';
 const used=firstSheet.getRange(logicalRange);
 console.log('---FIRST_SHEET---');
 console.log(JSON.stringify({name:firstSheet.name,address:used.address,rowCount:used.rowCount,columnCount:used.columnCount}));

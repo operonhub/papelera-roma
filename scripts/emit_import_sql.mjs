@@ -1,7 +1,10 @@
 import fs from 'node:fs/promises';
 import crypto from 'node:crypto';
 
-const text=await fs.readFile('data/productos_papelera_roma.csv','utf8');
+const catalog=process.argv[4]||'papelera';
+if(!['papelera','heladeria'].includes(catalog))throw new Error('Catalogo desconocido');
+const source=catalog==='heladeria'?'data/productos_heladeria.csv':'data/productos_papelera_roma.csv';
+const text=await fs.readFile(source,'utf8');
 function parseCsv(input){
   const rows=[];let row=[],value='',quoted=false;
   for(let i=0;i<input.length;i++){
@@ -31,11 +34,11 @@ if(stage==='stats'){
 }else if(stage==='setup'){
   const categories=[...new Set(productRows.map(r=>r.category))].map(name=>({name}));
   const suppliers=[...new Set(productRows.map(r=>r.supplier).filter(Boolean))].map(name=>({name}));
-  process.stdout.write(`insert into public.categories(name) select name from jsonb_to_recordset($payload$${json(categories)}$payload$::jsonb) as x(name text) on conflict(name) do update set active=true;
+  process.stdout.write(`with catalog as (select id from public.catalogs where slug='${catalog}') insert into public.categories(catalog_id,name) select catalog.id,x.name from catalog cross join jsonb_to_recordset($payload$${json(categories)}$payload$::jsonb) as x(name text) on conflict(catalog_id,name) do update set active=true;
 insert into public.suppliers(name) select name from jsonb_to_recordset($payload$${json(suppliers)}$payload$::jsonb) as x(name text) on conflict(name) do update set active=true;`);
 }else if(stage==='products'){
   const part=productRows.slice(index*500,(index+1)*500);
-  process.stdout.write(`with src as (select * from jsonb_to_recordset($payload$${json(part)}$payload$::jsonb) as x(code text,name text,category text,supplier text,bulk_quantity text,notes text,source_row integer,active boolean)), resolved as (select s.*,c.id category_id,p.id supplier_id from src s join public.categories c on c.name=s.category left join public.suppliers p on p.name=s.supplier) insert into public.products(code,name,category_id,supplier_id,bulk_quantity,notes,source_row,active) select code,name,category_id,supplier_id,bulk_quantity,notes,source_row,active from resolved on conflict(code) do update set name=excluded.name,category_id=excluded.category_id,supplier_id=excluded.supplier_id,bulk_quantity=excluded.bulk_quantity,notes=excluded.notes,source_row=excluded.source_row,active=excluded.active;`);
+  process.stdout.write(`with catalog as (select id from public.catalogs where slug='${catalog}'), src as (select * from jsonb_to_recordset($payload$${json(part)}$payload$::jsonb) as x(code text,name text,category text,supplier text,bulk_quantity text,notes text,source_row integer,active boolean)), resolved as (select s.*,catalog.id catalog_id,c.id category_id,p.id supplier_id from src s cross join catalog join public.categories c on c.catalog_id=catalog.id and c.name=s.category left join public.suppliers p on p.name=s.supplier) insert into public.products(code,name,catalog_id,category_id,supplier_id,bulk_quantity,notes,source_row,active) select code,name,catalog_id,category_id,supplier_id,bulk_quantity,notes,source_row,active from resolved on conflict(code) do update set name=excluded.name,catalog_id=excluded.catalog_id,category_id=excluded.category_id,supplier_id=excluded.supplier_id,bulk_quantity=excluded.bulk_quantity,notes=excluded.notes,source_row=excluded.source_row,active=excluded.active;`);
 }else if(stage==='clear-prices'){
   process.stdout.write(`delete from public.product_prices pp using public.products p where pp.product_id=p.id and p.code in (select code from jsonb_to_recordset($payload$${json(productRows.map(({code})=>({code})))}$payload$::jsonb) as x(code text));`);
 }else if(stage==='prices'){
