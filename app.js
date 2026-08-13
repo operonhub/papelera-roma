@@ -17,6 +17,13 @@ const state={
   quote:null,view:'catalog',busy:false,previewQuoteNumber:0,
 };
 const THEME_KEY='papelera-roma-theme';
+const BOOT_MIN_MS=1150,BOOT_MAX_MS=3500,bootStart=performance.now();let bootHidden=false;
+function hideBootSplash(){
+  if(bootHidden)return;bootHidden=true;
+  const el=document.querySelector('#boot-splash');if(!el)return;
+  setTimeout(()=>{el.classList.add('is-hidden');setTimeout(()=>el.remove(),320);},Math.max(0,BOOT_MIN_MS-(performance.now()-bootStart)));
+}
+setTimeout(hideBootSplash,BOOT_MAX_MS);
 const $=selector=>document.querySelector(selector);
 const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const money=value=>new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(Number(value)||0);
@@ -74,9 +81,9 @@ async function init(){
   bindStatic();
   if(state.preview){
     const [papelera,heladeria]=await Promise.all([fetch('data/productos_papelera_roma.csv').then(response=>response.text()),fetch('data/productos_heladeria.csv').then(response=>response.text())]);state.products=[...parseCSV(papelera).map(product=>({...product,catalogo:'papelera'})),...parseCSV(heladeria).map(product=>({...product,catalogo:'heladeria'}))];
-    $('#loading-card').hidden=true;setSaveState('Vista previa local · la nube no se modifica','preview');renderAll();return;
+    $('#loading-card').hidden=true;setSaveState('Vista previa local · la nube no se modifica','preview');renderAll();hideBootSplash();return;
   }
-  try{await loadCloudData();}catch(error){$('#loading-card').hidden=true;setSaveState('No se pudo conectar con la nube','error');renderAll();showToast(readableError(error));}
+  try{await loadCloudData();}catch(error){$('#loading-card').hidden=true;setSaveState('No se pudo conectar con la nube','error');renderAll();showToast(readableError(error));hideBootSplash();}
 }
 
 function bindStatic(){
@@ -118,7 +125,7 @@ async function loadCloudData(){
     db('price_change_batches?select=id,change_type,scope_label,percentage,affected_products,affected_prices,created_at&order=created_at.desc&limit=50'),
   ]);
   state.products=rows.map(productFromRemote);state.backups=backups||[];state.history=history||[];state.selected.clear();
-  $('#loading-card').hidden=true;setSaveState('Acceso público · nube activa','preview');renderAll();
+  $('#loading-card').hidden=true;setSaveState('Acceso público · nube activa','preview');renderAll();hideBootSplash();
 }
 
 function setSaveState(message,kind){const box=$('.save-state');box.className=`save-state ${kind||''}`;$('#save-label').textContent=message;$('#auth-button').textContent=state.preview?'Vista previa':'Acceso público';}

@@ -117,6 +117,17 @@ html[data-theme="dark"] .product-row:hover .product-actions{background:#132a31}
 html[data-theme="dark"] .product-note,
 html[data-theme="dark"] .bulk-quantity,
 html[data-theme="dark"] .price-wrap:before{color:#b4c7c3}
+/* Splash de arranque: momento de marca breve, sincronizado con la carga real (no un timer fijo). */
+/* Fondo fijo (no cambia con el tema): es el mismo mint del isologo, para que el borde blanco del logo no quede recortado contra blanco puro. */
+.boot-splash{position:fixed;inset:0;z-index:300;display:grid;place-items:center;background:#dff1eb;transition:opacity .3s ease,visibility .3s ease}
+.boot-splash.is-hidden{opacity:0;visibility:hidden;pointer-events:none}
+.boot-splash-logo-wrap{position:relative;display:grid;place-items:center}
+.boot-splash-logo-wrap::before{content:'';position:absolute;width:88px;height:88px;border-radius:50%;background:#086e73;opacity:.32;animation:boot-pulse 1.05s cubic-bezier(.16,1,.3,1) forwards}
+.boot-splash-logo{width:88px;height:88px;border-radius:50%;background:#fff;box-shadow:0 10px 32px rgba(10,54,55,.22);opacity:0;transform:scale(.8);animation:boot-in .7s cubic-bezier(.16,1,.3,1) forwards}
+@keyframes boot-in{to{opacity:1;transform:scale(1)}}
+@keyframes boot-pulse{to{opacity:0;transform:scale(1.7)}}
+@media(prefers-reduced-motion:reduce){.boot-splash-logo-wrap::before{display:none}.boot-splash-logo{animation:none;opacity:1;transform:none}}
+
 html[data-theme="dark"] .search input,
 html[data-theme="dark"] .control,
 html[data-theme="dark"] .field input,
