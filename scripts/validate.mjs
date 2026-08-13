@@ -26,6 +26,7 @@ if(!placeholder||Number(placeholder[6])!==4500)throw Error('No se preservó la f
 for(const file of ['index.html','styles.css','app.js','documentos.js','assets/logo-papelera-roma.png'])await fs.access(file);
 const index=await fs.readFile('index.html','utf8'),app=await fs.readFile('app.js','utf8'),documents=await fs.readFile('documentos.js','utf8');
 for(const id of ['catalog-tab','quote-tab','open-increase','save-backup','download-excel','selection-quote'])if(!index.includes(`id="${id}"`))throw Error(`Falta el control ${id}`);
+if(!app.includes("PUBLIC_ACCESS_UNTIL=Date.parse('2026-08-13T03:00:00.000Z')"))throw Error('Falta la caducidad del acceso público temporal');
 for(const removed of ['create-list','csv-file','supplier-filter'])if(index.includes(`id="${removed}"`))throw Error(`Debe quitarse el control ${removed}`);
 for(const fn of ['openIncrease','openQuote','downloadQuoteExcel','shareQuoteText','saveBackup'])if(!app.includes(`function ${fn}`))throw Error(`Falta la función ${fn}`);
 for(const removed of ['function importCSV','product-supplier','supplier-filter'])if(app.includes(removed))throw Error(`Debe quitarse ${removed}`);

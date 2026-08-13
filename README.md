@@ -1,6 +1,6 @@
 # Papelera Roma
 
-Aplicación de gestión de productos, precios y presupuestos conectada al proyecto Supabase `operon-crm`.
+Aplicación de gestión de productos, precios y presupuestos conectada al proyecto Supabase `Papelera Roma`.
 
 ## Funcionalidad
 
@@ -10,7 +10,8 @@ Aplicación de gestión de productos, precios y presupuestos conectada al proyec
 - Presupuesto en una sección independiente con exportación a PDF y Excel.
 - Copias completas del catálogo guardadas y restauradas desde la nube.
 - Historial de cambios de precios.
-- Acceso mediante usuarios autorizados de Operon y políticas RLS.
+- Acceso habitual mediante usuarios autorizados y políticas RLS.
+- Acceso público temporal para consultar y modificar precios hasta las 00:00 de Argentina del 13/08/2026; altas de productos y copias permanecen protegidas, y la base vuelve a bloquear el acceso automáticamente al vencer.
 
 Los códigos de integración se mantienen en la base de datos, pero no se muestran ni se solicitan en la interfaz.
 

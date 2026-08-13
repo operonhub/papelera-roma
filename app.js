@@ -1,5 +1,7 @@
 const SUPABASE={url:'https://fjekdcvkafvhcfqpoghg.supabase.co',key:'sb_publishable_zWvpmYKZeiXYa_bcsu86Ow_e5HMq5iS'};
-const SESSION_KEY='papelera_roma_operon_session_v1';
+const SESSION_KEY='papelera_roma_session_v2';
+const LEGACY_SESSION_KEY='papelera_roma_operon_session_v1';
+const PUBLIC_ACCESS_UNTIL=Date.parse('2026-08-13T03:00:00.000Z');
 const PRICE_FIELDS=[
   {key:'precio_unidad',tier:'unidad',label:'Unidad',detail:'1 unidad'},
   {key:'precio_10',tier:'x10',label:'Pack x10',detail:'10 unidades'},
@@ -22,6 +24,8 @@ const isPrice=value=>typeof value==='number'&&Number.isFinite(value);
 const priceInput=value=>isPrice(value)?number(value):'';
 const parsePrice=value=>{if(String(value).trim()==='')return null;const parsed=Number(String(value).replace(/[^0-9,-]/g,'').replaceAll('.','').replace(',','.'));return Number.isFinite(parsed)?Math.round(parsed):NaN;};
 const deepCopy=value=>JSON.parse(JSON.stringify(value));
+const publicAccessActive=()=>!state.preview&&Date.now()<PUBLIC_ACCESS_UNTIL;
+const cloudAccessActive=()=>Boolean(state.session)||publicAccessActive();
 
 function parseCSV(text){
   const rows=[];let row=[],value='',quoted=false;
@@ -71,7 +75,10 @@ async function init(){
   if(state.session){
     try{await ensureFreshSession();await loadCloudData();return;}catch(error){clearSession();showToast(readableError(error));}
   }
-  $('#loading-card').hidden=true;setSaveState('Ingresá para acceder a Operon','error');renderAll();openLogin();
+  if(publicAccessActive()){
+    try{await loadCloudData();return;}catch(error){showToast(readableError(error));}
+  }
+  $('#loading-card').hidden=true;setSaveState('Ingresá para acceder a Papelera Roma','error');renderAll();openLogin();
 }
 
 function bindStatic(){
@@ -83,15 +90,15 @@ function bindStatic(){
   $('#catalog').onfocusin=event=>{if(event.target.matches('.price-input'))event.target.select();};
   $('#catalog').onkeydown=event=>{if(event.target.matches('.price-input')&&event.key==='Enter')event.target.blur();};
   $('#new-product').onclick=openNewProduct;$('#download-excel').onclick=()=>downloadExcel(filtered());$('#save-backup').onclick=saveBackup;$('#view-backups').onclick=openBackups;$('#open-history').onclick=openHistory;$('#open-increase').onclick=()=>openIncrease(false);$('#selection-increase').onclick=()=>openIncrease(true);$('#selection-quote').onclick=()=>openQuote(true);$('#clear-selection').onclick=()=>{state.selected.clear();renderCatalog();};
-  $('#auth-button').onclick=()=>state.session?openAccount():openLogin();
+  $('#auth-button').onclick=()=>state.session?openAccount():(publicAccessActive()?openPublicAccess():openLogin());
   $('#quote-search').oninput=renderQuoteSearch;$('#clear-quote').onclick=confirmClearQuote;
   for(const id of ['quote-client','quote-address','quote-validity','quote-notes'])$('#'+id).oninput=syncQuoteFields;
   $('#quote-pdf').onclick=downloadQuotePdf;$('#quote-excel').onclick=downloadQuoteExcel;$('#quote-whatsapp').onclick=shareQuotePdf;$('#quote-text').onclick=shareQuoteText;
 }
 
-function readSession(){try{return JSON.parse(localStorage.getItem(SESSION_KEY)||'null');}catch{return null;}}
-function storeSession(session){session.expires_at=session.expires_at||Math.floor(Date.now()/1000)+Number(session.expires_in||3600);state.session=session;localStorage.setItem(SESSION_KEY,JSON.stringify(session));}
-function clearSession(){state.session=null;localStorage.removeItem(SESSION_KEY);}
+function readSession(){try{const stored=localStorage.getItem(SESSION_KEY)||localStorage.getItem(LEGACY_SESSION_KEY);if(stored&&!localStorage.getItem(SESSION_KEY))localStorage.setItem(SESSION_KEY,stored);return JSON.parse(stored||'null');}catch{return null;}}
+function storeSession(session){session.expires_at=session.expires_at||Math.floor(Date.now()/1000)+Number(session.expires_in||3600);state.session=session;localStorage.setItem(SESSION_KEY,JSON.stringify(session));localStorage.removeItem(LEGACY_SESSION_KEY);}
+function clearSession(){state.session=null;localStorage.removeItem(SESSION_KEY);localStorage.removeItem(LEGACY_SESSION_KEY);}
 
 async function authRequest(path,body){
   const response=await fetch(`${SUPABASE.url}/auth/v1/${path}`,{method:'POST',headers:{apikey:SUPABASE.key,'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -105,9 +112,10 @@ async function ensureFreshSession(){
 }
 
 async function db(path,{method='GET',body,prefer,headers={},retry=true}={}){
-  await ensureFreshSession();
-  const response=await fetch(`${SUPABASE.url}/rest/v1/${path}`,{method,headers:{apikey:SUPABASE.key,Authorization:`Bearer ${state.session.access_token}`,Accept:'application/json','Content-Type':'application/json',...(prefer?{Prefer:prefer}:{}),...headers},...(body===undefined?{}:{body:JSON.stringify(body)})});
-  if(response.status===401&&retry){state.session.expires_at=0;await ensureFreshSession();return db(path,{method,body,prefer,headers,retry:false});}
+  if(state.session)await ensureFreshSession();else if(!publicAccessActive())throw new Error('El acceso público de prueba finalizó. Iniciá sesión para continuar.');
+  const authorization=state.session?{Authorization:`Bearer ${state.session.access_token}`}:{ };
+  const response=await fetch(`${SUPABASE.url}/rest/v1/${path}`,{method,headers:{apikey:SUPABASE.key,...authorization,Accept:'application/json','Content-Type':'application/json',...(prefer?{Prefer:prefer}:{}),...headers},...(body===undefined?{}:{body:JSON.stringify(body)})});
+  if(response.status===401&&retry&&state.session){state.session.expires_at=0;await ensureFreshSession();return db(path,{method,body,prefer,headers,retry:false});}
   const text=await response.text();const payload=text?JSON.parse(text):null;if(!response.ok)throw new Error(payload?.message||payload?.hint||`Error ${response.status}`);return payload;
 }
 
@@ -120,13 +128,14 @@ async function rpc(name,body){return db(`rpc/${name}`,{method:'POST',body,prefer
 
 async function loadCloudData(){
   $('#loading-card').hidden=false;
+  const temporaryPublic=publicAccessActive()&&!state.session;
   const [rows,backups,history]=await Promise.all([
     dbPages('products?select=id,code,name,bulk_quantity,notes,active,category:categories(id,name),prices:product_prices(tier,amount)&active=eq.true&order=name.asc'),
-    db('catalog_backups?select=id,label,product_count,price_count,created_at&order=created_at.desc&limit=20'),
+    temporaryPublic?Promise.resolve([]):db('catalog_backups?select=id,label,product_count,price_count,created_at&order=created_at.desc&limit=20'),
     db('price_change_batches?select=id,change_type,scope_label,percentage,affected_products,affected_prices,created_at&order=created_at.desc&limit=50'),
   ]);
   state.products=rows.map(productFromRemote);state.backups=backups||[];state.history=history||[];state.selected.clear();
-  $('#loading-card').hidden=true;setSaveState('Catálogo conectado con Operon','');renderAll();
+  $('#loading-card').hidden=true;setSaveState(publicAccessActive()&&!state.session?'Acceso público por hoy · nube activa':'Catálogo conectado con Papelera Roma',publicAccessActive()&&!state.session?'preview':'');renderAll();
 }
 
 async function login(event){
@@ -136,15 +145,20 @@ async function login(event){
 }
 
 function openLogin(){
-  $('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel login-panel" role="dialog" aria-modal="true" aria-labelledby="login-title"><div class="login-brand"><img src="assets/logo-papelera-roma.png" alt=""><div><strong id="login-title">Ingresar a Papelera Roma</strong><span>Usá tu cuenta de Operon para editar y guardar en la nube.</span></div></div><form id="login-form" class="login-form"><div class="field"><label for="login-email">Correo</label><input id="login-email" type="email" autocomplete="username" required placeholder="nombre@correo.com"></div><div class="field"><label for="login-password">Contraseña</label><input id="login-password" type="password" autocomplete="current-password" required></div><div id="login-error" class="form-error" hidden></div><div class="login-actions"><button class="btn btn-accent" id="login-submit" type="submit">Ingresar</button></div><p class="login-note">Los datos del catálogo quedan protegidos por los permisos de tu cuenta. La clave pública de la aplicación no permite saltear esos controles.</p></form></section></div>`;
+  $('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel login-panel" role="dialog" aria-modal="true" aria-labelledby="login-title"><div class="login-brand"><img src="assets/logo-papelera-roma.png" alt=""><div><strong id="login-title">Ingresar a Papelera Roma</strong><span>Usá tu cuenta autorizada para editar y guardar en la nube.</span></div></div><form id="login-form" class="login-form"><div class="field"><label for="login-email">Correo</label><input id="login-email" type="email" autocomplete="username" required placeholder="nombre@correo.com"></div><div class="field"><label for="login-password">Contraseña</label><input id="login-password" type="password" autocomplete="current-password" required></div><div id="login-error" class="form-error" hidden></div><div class="login-actions"><button class="btn btn-accent" id="login-submit" type="submit">Ingresar</button></div><p class="login-note">Los datos del catálogo quedan protegidos por los permisos de tu cuenta. La clave pública de la aplicación no permite saltear esos controles.</p></form></section></div>`;
   $('#login-form').onsubmit=login;setTimeout(()=>$('#login-email')?.focus(),50);
 }
 
 function openAccount(){
-  $('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel login-panel" role="dialog" aria-modal="true"><div class="panel-head"><div><h2>Sesión de Operon</h2><p>${esc(state.session?.user?.email||'Usuario autenticado')}</p></div><button class="icon-close" data-close>×</button></div><div class="notice">El catálogo, los cambios de precio y las copias se guardan en la nube.</div><div class="panel-actions"><button class="btn btn-quiet" data-close>Cerrar</button><button class="btn btn-danger" id="logout">Cerrar sesión</button></div></section></div>`;bindPanelClose();$('#logout').onclick=()=>{clearSession();state.products=[];state.backups=[];state.history=[];closePanel();renderAll();setSaveState('Ingresá para acceder a Operon','error');openLogin();};
+  $('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel login-panel" role="dialog" aria-modal="true"><div class="panel-head"><div><h2>Sesión de Papelera Roma</h2><p>${esc(state.session?.user?.email||'Usuario autenticado')}</p></div><button class="icon-close" data-close>×</button></div><div class="notice">El catálogo, los cambios de precio y las copias se guardan en la nube.</div><div class="panel-actions"><button class="btn btn-quiet" data-close>Cerrar</button><button class="btn btn-danger" id="logout">Cerrar sesión</button></div></section></div>`;bindPanelClose();$('#logout').onclick=async()=>{clearSession();closePanel();if(publicAccessActive())await loadCloudData();else{state.products=[];state.backups=[];state.history=[];renderAll();setSaveState('Ingresá para acceder a Papelera Roma','error');openLogin();}};
 }
 
-function setSaveState(message,kind){const box=$('.save-state');box.className=`save-state ${kind||''}`;$('#save-label').textContent=message;$('#auth-button').textContent=state.session?(state.session.user?.email||'Mi cuenta'):(state.preview?'Vista previa':'Ingresar');}
+function openPublicAccess(){
+  const expiry=new Intl.DateTimeFormat('es-AR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Argentina/Buenos_Aires'}).format(new Date(PUBLIC_ACCESS_UNTIL));
+  $('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel login-panel" role="dialog" aria-modal="true"><div class="panel-head"><div><h2>Acceso abierto por hoy</h2><p>Podés probar precios, aumentos, presupuestos y Excel con los datos reales.</p></div><button class="icon-close" data-close>×</button></div><div class="notice">Los cambios de precios se guardan en la nube. El acceso público se cierra automáticamente a las ${esc(expiry)}.</div><div class="panel-actions"><button class="btn btn-accent" data-close>Entendido</button></div></section></div>`;bindPanelClose();
+}
+
+function setSaveState(message,kind){const box=$('.save-state');box.className=`save-state ${kind||''}`;$('#save-label').textContent=message;$('#auth-button').textContent=state.session?(state.session.user?.email||'Mi cuenta'):(state.preview?'Vista previa':publicAccessActive()?'Abierto por hoy':'Ingresar');}
 function renderAll(){renderFilters();renderSummary();renderCatalog();renderQuote();}
 function unique(key){return [...new Set(state.products.map(product=>product[key]).filter(Boolean))].sort(alphabetical);}
 function totalPriceCells(products=state.products){return products.reduce((sum,product)=>sum+PRICE_FIELDS.filter(field=>isPrice(product[field.key])).length,0);}
@@ -170,13 +184,14 @@ async function updatePrice(input){
   if(Number.isNaN(value)||value<0){input.value=priceInput(product[field.key]);showToast('Ingresá un precio válido.');return;}
   if(value===product[field.key]){input.value=priceInput(value);return;}
   const old=product[field.key];product[field.key]=value;input.disabled=true;
-  try{if(!state.preview){if(!state.session){product[field.key]=old;openLogin();return;}await rpc('papelera_set_product_price',{p_product_id:product.id,p_tier:field.tier,p_amount:value});await refreshHistory();}input.value=priceInput(value);renderSummary();showToast(`Precio ${field.label} actualizado.`);}
+  try{if(!state.preview){if(!cloudAccessActive()){product[field.key]=old;openLogin();return;}await rpc('papelera_set_product_price',{p_product_id:product.id,p_tier:field.tier,p_amount:value});await refreshHistory();}input.value=priceInput(value);renderSummary();showToast(`Precio ${field.label} actualizado.`);}
   catch(error){product[field.key]=old;input.value=priceInput(old);showToast(readableError(error));}
   finally{input.disabled=false;}
 }
 
 function openNewProduct(){
-  if(!state.preview&&!state.session)return openLogin();const categories=unique('categoria');
+  if(publicAccessActive()&&!state.session)return showToast('Crear productos permanece protegido. Hoy podés probar cambios de precios y presupuestos sin ingresar.');
+  if(!state.preview&&!cloudAccessActive())return openLogin();const categories=unique('categoria');
   $('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel" role="dialog" aria-modal="true"><div class="panel-head"><div><h2>Nuevo producto</h2><p>El código técnico se genera automáticamente y no se muestra en la lista.</p></div><button class="icon-close" data-close>×</button></div><form id="product-form"><div class="product-form"><div class="field field-wide"><label>Nombre <span class="required">*</span></label><input id="product-name" required></div><div class="field field-wide"><label>Categoría <span class="required">*</span></label><input id="product-category" list="category-options" required><datalist id="category-options">${categories.map(value=>`<option value="${esc(value)}"></option>`).join('')}</datalist></div>${PRICE_FIELDS.map(field=>`<div class="field"><label>Precio ${field.label}</label><input id="new-${field.tier}" type="number" min="0" step="1" placeholder="Sin precio"></div>`).join('')}<div class="field"><label>Contenido del bulto</label><input id="product-bulk" placeholder="Ej: 12 paquetes x 100"></div><div class="field field-wide"><label>Observaciones</label><input id="product-notes" placeholder="Opcional"></div></div><div id="product-error" class="form-error" hidden></div><div class="panel-actions"><button class="btn btn-quiet" type="button" data-close>Cancelar</button><button class="btn btn-accent" id="product-submit" type="submit">Guardar producto</button></div></form></section></div>`;
   bindPanelClose();$('#product-form').onsubmit=createProduct;setTimeout(()=>$('#product-name')?.focus(),50);
 }
@@ -200,7 +215,7 @@ function increaseChanges(){return targetProducts().flatMap(product=>PRICE_FIELDS
 function increaseScopeLabel(){const scope=state.increase.scope;return scope==='all'?'Todos los productos':scope==='selected'?`${number(state.selected.size)} productos seleccionados`:scope.slice(9);}
 
 function openIncrease(forceSelected=false){
-  if(!state.preview&&!state.session)return openLogin();if(forceSelected||state.selected.size)state.increase.scope='selected';if(state.increase.scope==='selected'&&!state.selected.size)state.increase.scope='all';renderIncreaseModal();
+  if(!state.preview&&!cloudAccessActive())return openLogin();if(forceSelected||state.selected.size)state.increase.scope='selected';if(state.increase.scope==='selected'&&!state.selected.size)state.increase.scope='all';renderIncreaseModal();
 }
 
 function renderIncreaseModal(){
@@ -264,27 +279,28 @@ function quoteExcelDocument(data){const rows=data.items.map(item=>`<Row><Cell><D
 function downloadQuoteExcel(){const data=quoteData();if(!data.items.length)return showToast('Agregá al menos un producto.');const blob=new Blob([quoteExcelDocument(data)],{type:'application/vnd.ms-excel;charset=utf-8'}),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=`papelera-roma-presupuesto-${safeName(data.client||data.number)}-${todayIso()}.xls`;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);showToast('Presupuesto Excel generado.');}
 
 async function saveBackup(){
-  if(state.preview||!state.session)return openLogin();const button=$('#save-backup');button.disabled=true;button.textContent='Guardando…';
+  if(publicAccessActive()&&!state.session)return showToast('Las copias en la nube permanecen protegidas durante el acceso público.');
+  if(state.preview||!cloudAccessActive())return openLogin();const button=$('#save-backup');button.disabled=true;button.textContent='Guardando…';
   try{await rpc('papelera_create_catalog_backup',{p_label:`Copia ${prettyDate()}`});await refreshBackups();showToast(`Copia guardada en la nube: ${number(state.products.length)} productos.`);}
   catch(error){showToast(readableError(error));}finally{button.disabled=false;button.textContent='☁ Guardar copia';}
 }
-async function refreshBackups(){if(state.preview||!state.session)return;state.backups=await db('catalog_backups?select=id,label,product_count,price_count,created_at&order=created_at.desc&limit=20');renderSummary();}
-async function openBackups(){if(state.preview||!state.session)return openLogin();$('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel panel-wide"><div class="panel-head"><div><h2>Copias en la nube</h2><p>Se guardan en Operon y están disponibles desde cualquier dispositivo autorizado.</p></div><button class="icon-close" data-close>×</button></div><div class="loading-card"><span class="spinner"></span><strong>Cargando copias</strong></div></section></div>`;bindPanelClose();try{await refreshBackups();renderBackupsModal();}catch(error){closePanel();showToast(readableError(error));}}
+async function refreshBackups(){if(state.preview||!cloudAccessActive()||(publicAccessActive()&&!state.session))return;state.backups=await db('catalog_backups?select=id,label,product_count,price_count,created_at&order=created_at.desc&limit=20');renderSummary();}
+async function openBackups(){if(publicAccessActive()&&!state.session)return showToast('Las copias en la nube permanecen protegidas durante el acceso público.');if(state.preview||!cloudAccessActive())return openLogin();$('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel panel-wide"><div class="panel-head"><div><h2>Copias en la nube</h2><p>Se guardan en Papelera Roma y están disponibles desde cualquier dispositivo autorizado.</p></div><button class="icon-close" data-close>×</button></div><div class="loading-card"><span class="spinner"></span><strong>Cargando copias</strong></div></section></div>`;bindPanelClose();try{await refreshBackups();renderBackupsModal();}catch(error){closePanel();showToast(readableError(error));}}
 function renderBackupsModal(){
-  $('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel panel-wide" role="dialog" aria-modal="true"><div class="panel-head"><div><h2>Copias en la nube</h2><p>Podés descargar una copia en Excel o restaurar el catálogo completo.</p></div><button class="icon-close" data-close>×</button></div><div class="notice">Las copias se almacenan en Supabase Operon, no en este navegador.</div>${state.backups.length?`<div class="backup-list">${state.backups.map((backup,index)=>backupRow(backup,index)).join('')}</div>`:'<div class="panel-empty"><strong>Todavía no hay copias</strong><span>Usá “Guardar copia” desde la lista de precios.</span></div>'}</section></div>`;bindPanelClose();document.querySelectorAll('[data-backup-download]').forEach(button=>button.onclick=()=>downloadBackup(button.dataset.backupDownload));document.querySelectorAll('[data-backup-restore]').forEach(button=>button.onclick=()=>confirmRestore(button.dataset.backupRestore));document.querySelectorAll('[data-backup-delete]').forEach(button=>button.onclick=()=>confirmDeleteBackup(button.dataset.backupDelete));
+  $('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel panel-wide" role="dialog" aria-modal="true"><div class="panel-head"><div><h2>Copias en la nube</h2><p>Podés descargar una copia en Excel o restaurar el catálogo completo.</p></div><button class="icon-close" data-close>×</button></div><div class="notice">Las copias se almacenan en Supabase de Papelera Roma, no en este navegador.</div>${state.backups.length?`<div class="backup-list">${state.backups.map((backup,index)=>backupRow(backup,index)).join('')}</div>`:'<div class="panel-empty"><strong>Todavía no hay copias</strong><span>Usá “Guardar copia” desde la lista de precios.</span></div>'}</section></div>`;bindPanelClose();document.querySelectorAll('[data-backup-download]').forEach(button=>button.onclick=()=>downloadBackup(button.dataset.backupDownload));document.querySelectorAll('[data-backup-restore]').forEach(button=>button.onclick=()=>confirmRestore(button.dataset.backupRestore));document.querySelectorAll('[data-backup-delete]').forEach(button=>button.onclick=()=>confirmDeleteBackup(button.dataset.backupDelete));
 }
 function backupRow(backup,index){const date=new Intl.DateTimeFormat('es-AR',{day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(backup.created_at));return `<div class="backup-item"><div class="backup-icon">${index===0?'★':'◷'}</div><div class="backup-info"><strong>${esc(backup.label||'Copia guardada')}</strong><small>${date} · ${number(backup.product_count)} productos · ${number(backup.price_count)} precios</small></div><div class="backup-actions"><button class="btn btn-quiet" data-backup-download="${backup.id}">⇩ Excel</button><button class="btn btn-secondary" data-backup-restore="${backup.id}">Restaurar</button><button class="btn btn-danger" data-backup-delete="${backup.id}">Eliminar</button></div></div>`;}
 async function downloadBackup(id){try{const [backup]=await db(`catalog_backups?select=snapshot,created_at,label&id=eq.${id}&limit=1`);if(!backup)throw new Error('Copia no encontrada.');downloadExcel((backup.snapshot?.products||[]).map(productFromSnapshot),backup.created_at,`papelera-roma-copia-${todayIso()}.xls`);}catch(error){showToast(readableError(error));}}
 function confirmRestore(id){const backup=state.backups.find(item=>item.id===id);if(!backup)return;$('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel"><div class="confirm-card"><div class="confirm-icon">◷</div><h2>Restaurar copia</h2><p>El catálogo activo volverá a <strong>${number(backup.product_count)} productos</strong> y <strong>${number(backup.price_count)} precios</strong>.</p><div class="notice">Los productos creados después de esta copia quedarán inactivos; no se borran físicamente.</div><div class="panel-actions"><button class="btn btn-quiet" id="restore-back">Volver</button><button class="btn btn-accent" id="restore-confirm">Restaurar</button></div></div></section></div>`;$('#restore-back').onclick=renderBackupsModal;$('#restore-confirm').onclick=async()=>{const button=$('#restore-confirm');button.disabled=true;button.textContent='Restaurando…';try{await rpc('papelera_restore_catalog_backup',{p_backup_id:id});closePanel();await loadCloudData();showToast('La copia fue restaurada.');}catch(error){showToast(readableError(error));button.disabled=false;button.textContent='Restaurar';}};}
 function confirmDeleteBackup(id){$('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel"><div class="confirm-card"><div class="confirm-icon">×</div><h2>Eliminar copia</h2><p>La copia se borrará de la nube. Esta acción no se puede deshacer.</p><div class="panel-actions"><button class="btn btn-quiet" id="delete-back">Volver</button><button class="btn btn-danger" id="delete-confirm">Eliminar</button></div></div></section></div>`;$('#delete-back').onclick=renderBackupsModal;$('#delete-confirm').onclick=async()=>{try{await db(`catalog_backups?id=eq.${id}`,{method:'DELETE'});await refreshBackups();renderBackupsModal();showToast('Copia eliminada.');}catch(error){showToast(readableError(error));}};}
 
-async function refreshHistory(){if(state.preview||!state.session)return;state.history=await db('price_change_batches?select=id,change_type,scope_label,percentage,affected_products,affected_prices,created_at&order=created_at.desc&limit=50');}
-async function openHistory(){if(!state.preview&&state.session)try{await refreshHistory();}catch(error){return showToast(readableError(error));}$('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel panel-wide"><div class="panel-head"><div><h2>Historial de precios</h2><p>Cambios manuales, aumentos, productos creados y restauraciones.</p></div><button class="icon-close" data-close>×</button></div>${state.history.length?`<div class="history-list">${state.history.map(historyRow).join('')}</div>`:'<div class="panel-empty"><strong>Todavía no hay cambios</strong></div>'}</section></div>`;bindPanelClose();}
+async function refreshHistory(){if(state.preview||!cloudAccessActive())return;state.history=await db('price_change_batches?select=id,change_type,scope_label,percentage,affected_products,affected_prices,created_at&order=created_at.desc&limit=50');}
+async function openHistory(){if(!state.preview&&cloudAccessActive())try{await refreshHistory();}catch(error){return showToast(readableError(error));}$('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel panel-wide"><div class="panel-head"><div><h2>Historial de precios</h2><p>Cambios manuales, aumentos, productos creados y restauraciones.</p></div><button class="icon-close" data-close>×</button></div>${state.history.length?`<div class="history-list">${state.history.map(historyRow).join('')}</div>`:'<div class="panel-empty"><strong>Todavía no hay cambios</strong></div>'}</section></div>`;bindPanelClose();}
 function historyRow(item){const text=item.change_type==='manual'?`Precio editado · ${item.scope_label}`:item.change_type==='create'?`Producto agregado · ${item.scope_label}`:item.change_type==='restore'?'Copia restaurada':`${Number(item.percentage)>=0?'Aumento':'Descuento'} del ${Math.abs(Number(item.percentage))}% · ${item.scope_label}`;const date=new Intl.DateTimeFormat('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(item.created_at));return `<div class="history-entry"><div class="backup-icon">↗</div><div><strong>${esc(text)}</strong><small>${date} · ${number(item.affected_products)} productos · ${number(item.affected_prices)} precios</small></div></div>`;}
 
 function bindPanelClose(){document.querySelectorAll('[data-close]').forEach(button=>button.onclick=closePanel);const overlay=$('.panel-overlay');if(overlay)overlay.onclick=event=>{if(event.target===event.currentTarget)closePanel();};document.onkeydown=event=>{if(event.key==='Escape')closePanel();};}
 function closePanel(){$('#panel-root').innerHTML='';document.onkeydown=null;}
-function readableError(error){const message=String(error?.message||error||'No se pudo completar la acción.');if(/invalid login credentials/i.test(message))return 'Correo o contraseña incorrectos.';if(/email not confirmed/i.test(message))return 'La cuenta todavía no confirmó el correo.';if(/fetch/i.test(message))return 'No se pudo conectar con Operon. Revisá tu conexión.';return message;}
+function readableError(error){const message=String(error?.message||error||'No se pudo completar la acción.');if(/invalid login credentials/i.test(message))return 'Correo o contraseña incorrectos.';if(/email not confirmed/i.test(message))return 'La cuenta todavía no confirmó el correo.';if(/fetch/i.test(message))return 'No se pudo conectar con Papelera Roma. Revisá tu conexión.';return message;}
 function showToast(message){const toast=$('#toast');toast.textContent=message;toast.classList.add('show');clearTimeout(showToast.timer);showToast.timer=setTimeout(()=>toast.classList.remove('show'),3600);}
 
 document.addEventListener('DOMContentLoaded',init);
