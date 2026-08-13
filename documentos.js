@@ -1,0 +1,146 @@
+(function(){
+  'use strict';
+
+  const A4={portrait:[595,842],landscape:[842,595]};
+  const TEAL=[0.031,0.498,0.525],MINT=[0.573,0.835,0.753],INK=[0.071,0.220,0.231];
+
+  function latin(text){
+    let out='';
+    for(const ch of String(text??''))out+=ch.codePointAt(0)<=255?ch:'?';
+    return out.replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)');
+  }
+  function width(text,size,bold=false){return String(text??'').length*size*(bold?.56:.51);}
+  function truncate(text,max,size,bold=false){
+    let value=String(text??'');
+    if(width(value,size,bold)<=max)return value;
+    while(value.length>1&&width(value+'...',size,bold)>max)value=value.slice(0,-1);
+    return value+'...';
+  }
+  function money(value){return '$ '+Math.round(Number(value)||0).toLocaleString('es-AR');}
+  function text(ops,x,y,value,size=9,bold=false,color=INK){
+    ops.push(`${color.join(' ')} rg BT /${bold?'F2':'F1'} ${size} Tf 1 0 0 1 ${x.toFixed(2)} ${y.toFixed(2)} Tm (${latin(value)}) Tj ET`);
+  }
+  function textRight(ops,right,y,value,size=9,bold=false,color=INK){text(ops,right-width(value,size,bold),y,value,size,bold,color);}
+  function rect(ops,x,y,w,h,color){ops.push(`${color.join(' ')} rg ${x} ${y} ${w} ${h} re f`);}
+  function line(ops,x1,y1,x2,y2,color=[.82,.89,.87]){ops.push(`${color.join(' ')} RG .5 w ${x1} ${y1} m ${x2} ${y2} l S`);}
+
+  function brandHeader(ops,pageW,pageH,kind,subtitle){
+    rect(ops,0,pageH-74,pageW,74,TEAL);
+    rect(ops,34,pageH-55,30,30,MINT);
+    text(ops,43,pageH-45,'R',15,true,TEAL);
+    text(ops,76,pageH-35,'PAPELERA ROMA',17,true,[1,1,1]);
+    text(ops,76,pageH-51,'Monte Chingolo',8,false,[.86,.96,.94]);
+    textRight(ops,pageW-34,pageH-36,kind,12,true,[1,1,1]);
+    if(subtitle)textRight(ops,pageW-34,pageH-51,truncate(subtitle,260,8),8,false,[.86,.96,.94]);
+  }
+
+  function assemble(pages,pageW,pageH){
+    const count=pages.length;
+    for(let i=0;i<count;i++){
+      text(pages[i],34,20,'Papelera Roma - Documento generado desde la lista de precios',7,false,[.35,.48,.46]);
+      textRight(pages[i],pageW-34,20,`Página ${i+1} de ${count}`,7,false,[.35,.48,.46]);
+    }
+    const objects=[],pageIds=[];
+    for(let i=0;i<count;i++)pageIds.push(3+i*2);
+    const regular=3+count*2,bold=regular+1;
+    objects[1]='<< /Type /Catalog /Pages 2 0 R >>';
+    objects[2]=`<< /Type /Pages /Kids [${pageIds.map(id=>id+' 0 R').join(' ')}] /Count ${count} >>`;
+    pages.forEach((ops,i)=>{
+      const pageId=3+i*2,contentId=pageId+1,stream=ops.join('\n');
+      objects[pageId]=`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageW} ${pageH}] /Resources << /Font << /F1 ${regular} 0 R /F2 ${bold} 0 R >> >> /Contents ${contentId} 0 R >>`;
+      objects[contentId]=`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
+    });
+    objects[regular]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
+    objects[bold]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
+    let out='%PDF-1.4\n%âãÏÓ\n';const offsets=new Array(bold+1).fill(0);
+    for(let id=1;id<=bold;id++){offsets[id]=out.length;out+=`${id} 0 obj\n${objects[id]}\nendobj\n`;}
+    const xref=out.length;out+=`xref\n0 ${bold+1}\n0000000000 65535 f \n`;
+    for(let id=1;id<=bold;id++)out+=String(offsets[id]).padStart(10,'0')+' 00000 n \n';
+    out+=`trailer\n<< /Size ${bold+1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+    const bytes=new Uint8Array(out.length);for(let i=0;i<out.length;i++)bytes[i]=out.charCodeAt(i)&255;return bytes;
+  }
+
+  function buildPriceListPdf({items,title,client,date,priceFields}){
+    const [pageW,pageH]=A4.landscape,pages=[];let ops,y;
+    const cols={name:34,prices:[440,510,580,650,720],right:808};
+    const groups=new Map();
+    [...items].sort((a,b)=>a.categoria.localeCompare(b.categoria,'es',{sensitivity:'base',numeric:true})||a.nombre.localeCompare(b.nombre,'es',{sensitivity:'base',numeric:true})).forEach(p=>{if(!groups.has(p.categoria))groups.set(p.categoria,[]);groups.get(p.categoria).push(p);});
+    function tableHeader(){
+      rect(ops,30,y-5,pageW-60,19,[.89,.95,.93]);
+      text(ops,cols.name,y,'Producto',8,true);
+      priceFields.forEach((field,i)=>textRight(ops,cols.prices[i]+56,y,field.label,8,true));y-=20;
+    }
+    function newPage(){
+      ops=[];pages.push(ops);brandHeader(ops,pageW,pageH,'LISTA DE PRECIOS',title||'Precios vigentes');
+      y=pageH-98;
+      if(pages.length===1){
+        text(ops,34,y,`Fecha: ${date}`,9,false);
+        if(client)text(ops,210,y,`Cliente: ${truncate(client,340,9,true)}`,9,true);
+        textRight(ops,pageW-34,y,`${items.length.toLocaleString('es-AR')} productos`,9,true);
+        y-=24;
+      }
+      tableHeader();
+    }
+    function ensure(space=18){if(y<46+space)newPage();}
+    newPage();
+    for(const [category,products] of groups){
+      ensure(32);rect(ops,30,y-5,pageW-60,18,[.82,.93,.89]);text(ops,34,y,truncate(category,740,9,true),9,true,TEAL);y-=19;
+      for(const p of products){
+        ensure();text(ops,cols.name,y,truncate(p.nombre,385,8),8,false);
+        priceFields.forEach((field,i)=>{const value=p[field.key];textRight(ops,cols.prices[i]+56,y,typeof value==='number'?money(value):'-',8,false);});
+        y-=17;line(ops,34,y+5,pageW-34,y+5);
+      }
+    }
+    return assemble(pages,pageW,pageH);
+  }
+
+  function buildQuotePdf({number,client,address,validity,notes,date,items,subtotal}){
+    const [pageW,pageH]=A4.portrait,pages=[];let ops,y;
+    function tableHeader(){
+      rect(ops,30,y-5,pageW-60,20,[.89,.95,.93]);
+      text(ops,34,y,'Cant.',8,true);text(ops,70,y,'Producto',8,true);text(ops,320,y,'Presentación',8,true);
+      textRight(ops,468,y,'Precio',8,true);textRight(ops,561,y,'Importe',8,true);y-=22;
+    }
+    function newPage(){
+      ops=[];pages.push(ops);brandHeader(ops,pageW,pageH,'PRESUPUESTO',number?`N° ${number}`:'');
+      y=pageH-98;
+      if(pages.length===1){
+        text(ops,34,y,`Fecha: ${date}`,9,false);textRight(ops,pageW-34,y,`Validez: ${validity||'A confirmar'}`,9,false);y-=18;
+        if(client){text(ops,34,y,`Cliente: ${truncate(client,500,11,true)}`,11,true);y-=17;}
+        if(address){text(ops,34,y,`Domicilio: ${truncate(address,490,9)}`,9,false);y-=17;}
+        y-=5;
+      }
+      tableHeader();
+    }
+    function ensure(space=20){if(y<64+space)newPage();}
+    newPage();
+    for(const item of items){
+      ensure();text(ops,34,y,String(item.quantity),8,false);
+      text(ops,70,y,truncate(item.name,238,8),8,false);
+      text(ops,320,y,truncate(item.priceLabel,90,8),8,false);
+      textRight(ops,468,y,money(item.unitPrice),8,false);textRight(ops,561,y,money(item.amount),8,true);y-=18;line(ops,34,y+6,561,y+6);
+    }
+    ensure(85);y-=8;rect(ops,332,y-38,229,52,[.91,.97,.95]);
+    text(ops,346,y-6,'TOTAL',10,true,TEAL);textRight(ops,547,y-8,money(subtotal),15,true,INK);y-=55;
+    if(notes){text(ops,34,y,'Observaciones',9,true,TEAL);y-=15;const clean=truncate(notes,500,8);text(ops,34,y,clean,8,false);y-=20;}
+    text(ops,34,y,'Documento no válido como factura. Precios sujetos a confirmación.',7,false,[.35,.48,.46]);
+    return assemble(pages,pageW,pageH);
+  }
+
+  function download(bytes,filename,type){
+    const blob=new Blob([bytes],{type}),url=URL.createObjectURL(blob),link=document.createElement('a');
+    link.href=url;link.download=filename;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);
+  }
+
+  async function sharePdf(bytes,filename,title){
+    const file=new File([bytes],filename,{type:'application/pdf'});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){
+      try{await navigator.share({files:[file],title});return {shared:true};}
+      catch(error){if(error&&error.name==='AbortError')return {cancelled:true};}
+    }
+    download(bytes,filename,'application/pdf');
+    return {downloaded:true};
+  }
+
+  window.RomaDocuments={buildPriceListPdf,buildQuotePdf,download,sharePdf};
+})();

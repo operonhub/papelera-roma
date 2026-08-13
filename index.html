@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Gestión de productos, precios y presupuestos de Papelera Roma.">
+  <meta name="theme-color" content="#073f43">
+  <title>Papelera Roma · Gestión comercial</title>
+  <link rel="icon" href="assets/logo-papelera-roma.png" type="image/png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-top">
+      <div class="brand">
+        <img class="brand-logo" src="assets/logo-papelera-roma.png" alt="Logo de Papelera Roma">
+        <div><strong>Papelera Roma</strong><small>Productos · Precios · Presupuestos</small></div>
+      </div>
+      <button class="user-chip" id="auth-button" type="button">Ingresar</button>
+    </div>
+    <div class="container app-tabs" role="tablist" aria-label="Secciones">
+      <button class="app-tab active" id="catalog-tab" role="tab" aria-selected="true" data-view="catalog">Lista de precios</button>
+      <button class="app-tab" id="quote-tab" role="tab" aria-selected="false" data-view="quote">Presupuesto</button>
+    </div>
+  </header>
+
+  <main class="container main-content">
+    <section class="app-view active" id="catalog-view" role="tabpanel" aria-labelledby="catalog-tab">
+      <div class="page-heading">
+        <div><p class="eyebrow">CATÁLOGO</p><h1>Productos y precios</h1><p>Editá un importe directamente o elegí productos para trabajar en conjunto.</p></div>
+        <div class="page-actions">
+          <button class="btn btn-primary" id="new-product">＋ Nuevo producto</button>
+          <button class="btn btn-secondary" id="download-excel">⇩ Descargar Excel</button>
+          <button class="btn btn-secondary" id="save-backup">☁ Guardar copia</button>
+          <button class="btn btn-secondary" id="view-backups">Ver copias <span class="button-count" id="backup-count">0</span></button>
+          <button class="btn btn-secondary" id="open-history">Historial</button>
+          <button class="btn btn-accent" id="open-increase">↗ Aumentar precios</button>
+        </div>
+      </div>
+
+      <section class="summary-strip" aria-label="Resumen del catálogo">
+        <div><strong id="product-count">—</strong><span>productos</span></div>
+        <div><strong id="category-count">—</strong><span>categorías</span></div>
+        <div><strong id="price-count">—</strong><span>precios cargados</span></div>
+        <div class="save-state"><i></i><span id="save-label">Conectando con la nube…</span></div>
+      </section>
+
+      <section class="catalog-card">
+        <div class="toolbar">
+          <label class="search"><span>⌕</span><input id="search" type="search" placeholder="Buscar producto…" autocomplete="off"></label>
+          <select id="category-filter" class="control" aria-label="Filtrar por categoría"></select>
+        </div>
+        <div class="selection-bar" id="selection-bar" hidden>
+          <span><strong id="selection-count">0</strong> productos seleccionados</span>
+          <div class="selection-actions">
+            <button class="text-button" id="selection-increase">Aumentar precios</button>
+            <button class="text-button" id="selection-quote">Presupuestar</button>
+            <button class="text-button" id="clear-selection">Limpiar</button>
+          </div>
+        </div>
+        <div class="loading-card" id="loading-card"><span class="spinner"></span><strong>Cargando catálogo</strong><small>Estamos trayendo productos y precios desde Operon.</small></div>
+        <div id="catalog"></div>
+        <div class="empty" id="empty" hidden><strong>No encontramos productos</strong><span>Probá con otra búsqueda o categoría.</span></div>
+      </section>
+    </section>
+
+    <section class="app-view" id="quote-view" role="tabpanel" aria-labelledby="quote-tab" hidden>
+      <div class="page-heading compact">
+        <div><p class="eyebrow">PRESUPUESTO</p><h1>Nuevo presupuesto</h1><p>Cada renglón usa una presentación concreta; la cantidad indica cuántas presentaciones se venden.</p></div>
+        <button class="btn btn-secondary" id="clear-quote">Vaciar presupuesto</button>
+      </div>
+
+      <div class="quote-layout">
+        <section class="workspace-card">
+          <div class="section-title"><span>1</span><div><h2>Datos del presupuesto</h2><p>Completá solamente lo que necesites mostrar.</p></div></div>
+          <div class="document-fields">
+            <div class="field"><label for="quote-client">Cliente</label><input id="quote-client" placeholder="Nombre o comercio"></div>
+            <div class="field"><label for="quote-address">Domicilio</label><input id="quote-address" placeholder="Opcional"></div>
+            <div class="field"><label for="quote-validity">Validez</label><input id="quote-validity" value="7 días"></div>
+            <div class="field"><label for="quote-number">Número</label><input id="quote-number" disabled></div>
+          </div>
+        </section>
+
+        <section class="workspace-card">
+          <div class="section-title"><span>2</span><div><h2>Agregar productos</h2><p>Buscá por nombre o categoría y tocá el producto para sumarlo.</p></div></div>
+          <div class="quote-search"><input id="quote-search" type="search" placeholder="Ej: bandeja, bolsa, vaso…" autocomplete="off"><div class="quote-results" id="quote-results" hidden></div></div>
+        </section>
+
+        <section class="workspace-card quote-detail-card">
+          <div class="section-title"><span>3</span><div><h2>Detalle</h2><p>Elegí Unidad, Pack o Bulto en cada renglón.</p></div></div>
+          <div class="quote-items" id="quote-items"></div>
+          <div class="quote-total"><span>Total del presupuesto</span><strong id="quote-total">$ 0</strong></div>
+          <div class="field"><label for="quote-notes">Observaciones</label><input id="quote-notes" placeholder="Forma de pago, entrega u otra aclaración"></div>
+        </section>
+
+        <section class="workspace-card quote-output">
+          <div><h2>Exportar presupuesto</h2><p>Descargalo en PDF o Excel, o preparalo para compartir por WhatsApp.</p></div>
+          <div class="document-actions">
+            <button class="btn btn-dark" id="quote-pdf">Descargar PDF</button>
+            <button class="btn btn-secondary" id="quote-excel">Descargar Excel</button>
+            <button class="btn btn-whatsapp" id="quote-whatsapp">WhatsApp con PDF</button>
+            <button class="btn btn-secondary" id="quote-text">WhatsApp texto</button>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <div id="panel-root"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="documentos.js" defer></script>
+  <script src="app.js" defer></script>
+</body>
+</html>

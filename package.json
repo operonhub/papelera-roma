@@ -1,0 +1,11 @@
+{
+  "name": "papelera-roma-demo",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npx --yes serve . -l 3000",
+    "build": "node scripts/validate.mjs",
+    "supabase:check": "node scripts/import_supabase.mjs",
+    "supabase:import": "node scripts/import_supabase.mjs --apply"
+  }
+}

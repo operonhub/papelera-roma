@@ -1,0 +1,8 @@
+node_modules/
+.vercel/
+.analysis/
+tmp/
+*.log
+.env
+.env.*
+!.env.example

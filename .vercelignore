@@ -1,0 +1,14 @@
+.analysis/
+.git/
+.github/
+data/
+node_modules/
+scripts/
+supabase/
+tmp/
+.env
+.env.*
+.gitignore
+AGENTS.md
+README.md
+package.json
