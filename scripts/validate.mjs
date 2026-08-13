@@ -39,6 +39,7 @@ for(const removed of ['create-list','csv-file','supplier-filter'])if(index.inclu
 for(const fn of ['setCatalog','catalogProducts','openIncrease','openQuote','openCategoryManager','renameCategory','openEditProduct','updateProduct','confirmDeactivateProduct','deactivateProduct','nextQuoteNumber','issuedQuoteData','downloadQuoteExcel','printQuotePdf','shareQuoteText','printPriceList','sharePriceList','saveBackup'])if(!app.includes(`function ${fn}`))throw Error(`Falta la función ${fn}`);
 if(!app.includes('p_catalog_slug:state.catalog'))throw Error('Las operaciones deben estar aisladas por lista');
 for(const expected of ["tier:'precio'",'Cantidad / presentación','priceFieldsFor'])if(!app.includes(expected))throw Error(`Falta la lógica de Heladería: ${expected}`);
+for(const expected of ['data-edit-product-id','data-delete-product-id','productActionIcon'])if(!app.includes(expected))throw Error(`Falta la acción lateral de producto: ${expected}`);
 for(const removed of ['function importCSV','product-supplier','supplier-filter'])if(app.includes(removed))throw Error(`Debe quitarse ${removed}`);
 for(const fn of ['buildPriceListPdf','buildQuotePdf','sharePdf','printPdf'])if(!documents.includes(`function ${fn}`))throw Error(`Falta el generador ${fn}`);
 if(index.includes('quote-validity')||index.includes('quote-number')||index.includes('quote-notes'))throw Error('Validez, número manual y observaciones deben quedar fuera del formulario');
