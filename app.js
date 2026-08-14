@@ -12,6 +12,7 @@ const FIELD_BY_TIER=new Map(PRICE_FIELDS.map(field=>[field.tier,field]));
 const CATALOGS={papelera:{slug:'papelera',name:'Papelera'},heladeria:{slug:'heladeria',name:'Heladería'}};
 const state={
   preview:false,products:[],backups:[],history:[],selected:new Set(),
+  loadedCatalogs:new Set(),secondaryLoaded:false,secondaryLoading:null,
   catalog:'papelera',
   filters:{search:'',category:''},increase:{scope:'all',percentage:10,tiers:new Set(PAPELERA_PRICE_FIELDS.map(x=>x.tier))},
   quote:null,view:'catalog',busy:false,previewQuoteNumber:0,
@@ -81,6 +82,7 @@ async function init(){
   bindStatic();
   if(state.preview){
     const [papelera,heladeria]=await Promise.all([fetch('data/productos_papelera_roma.csv').then(response=>response.text()),fetch('data/productos_heladeria.csv').then(response=>response.text())]);state.products=[...parseCSV(papelera).map(product=>({...product,catalogo:'papelera'})),...parseCSV(heladeria).map(product=>({...product,catalogo:'heladeria'}))];
+    state.loadedCatalogs.add('papelera');state.loadedCatalogs.add('heladeria');
     $('#loading-card').hidden=true;setSaveState('Vista previa local · la nube no se modifica','preview');renderAll();hideBootSplash();return;
   }
   try{await loadCloudData();}catch(error){$('#loading-card').hidden=true;setSaveState('No se pudo conectar con la nube','error');renderAll();showToast(readableError(error));hideBootSplash();}
@@ -98,7 +100,7 @@ function bindStatic(){
   $('#catalog').onclick=event=>{const editButton=event.target.closest('[data-edit-product-id]');if(editButton)return openEditProduct(editButton.dataset.editProductId);const deleteButton=event.target.closest('[data-delete-product-id]');if(deleteButton){const product=state.products.find(item=>item.id===deleteButton.dataset.deleteProductId);if(product)return confirmDeactivateProduct(product);}const orderButton=event.target.closest('[data-order-category-id]');if(orderButton)return openProductOrder(Number(orderButton.dataset.orderCategoryId),orderButton.dataset.orderCategoryName);const categoryButton=event.target.closest('[data-edit-category-id]');if(categoryButton)openRenameCategory(Number(categoryButton.dataset.editCategoryId),categoryButton.dataset.editCategoryName);};
   $('#catalog').onfocusin=event=>{if(event.target.matches('.price-input'))event.target.select();};
   $('#catalog').onkeydown=event=>{if(event.target.matches('.price-input')&&event.key==='Enter')event.target.blur();};
-  $('#new-product').onclick=openNewProduct;$('#download-excel').onclick=()=>downloadExcel(filtered());$('#print-price-list').onclick=printPriceList;$('#share-price-list').onclick=sharePriceList;$('#manage-categories').onclick=openCategoryManager;$('#save-backup').onclick=saveBackup;$('#view-backups').onclick=openBackups;$('#open-increase').onclick=()=>openIncrease(false);$('#selection-increase').onclick=()=>openIncrease(true);$('#selection-quote').onclick=()=>openQuote(true);$('#clear-selection').onclick=()=>{state.selected.clear();renderCatalog();};
+  $('#new-product').onclick=openNewProduct;$('#download-excel').onclick=()=>downloadExcel(filtered());$('#print-price-list').onclick=printPriceList;$('#share-price-list').onclick=sharePriceList;$('#manage-categories').onclick=openCategoryManager;$('#save-backup').onclick=saveBackup;$('#view-backups').onclick=openBackups;$('#open-increase').onclick=()=>openIncrease(false);$('#selection-increase').onclick=()=>openIncrease(true);$('#selection-quote').onclick=()=>openQuote(true);$('#clear-selection').onclick=clearSelection;
   $('#quote-search').oninput=renderQuoteSearch;$('#clear-quote').onclick=confirmClearQuote;
   for(const id of ['quote-client','quote-address'])$('#'+id).oninput=syncQuoteFields;
   $('#quote-discount').oninput=event=>{state.quote.discountPercentage=normaliseDiscount(event.target.value);updateQuoteTotals();};
@@ -117,22 +119,50 @@ async function dbPages(path,size=1000){
 
 async function rpc(name,body){return db(`rpc/${name}`,{method:'POST',body,prefer:'return=representation'});}
 
+function catalogProductsPath(slug){
+  return `products?select=id,code,name,bulk_quantity,presentation,notes,display_order,active,catalog:catalogs!inner(slug,name),category:categories(id,name),prices:product_prices(tier,amount)&catalog.slug=eq.${encodeURIComponent(slug)}&active=eq.true&order=category_id.asc,display_order.asc,name.asc`;
+}
+
+async function loadCatalogData(slug){
+  const rows=await dbPages(catalogProductsPath(slug)),products=rows.map(productFromRemote);
+  state.products=[...state.products.filter(product=>product.catalogo!==slug),...products];
+  state.loadedCatalogs.add(slug);
+}
+
+async function loadSecondaryData(){
+  if(state.preview||state.secondaryLoaded)return;
+  if(state.secondaryLoading)return state.secondaryLoading;
+  state.secondaryLoading=(async()=>{
+    const [backups,history]=await Promise.all([
+      db('catalog_backups?select=id,label,product_count,price_count,created_at,catalog:catalogs(slug,name)&order=created_at.desc&limit=40'),
+      db('price_change_batches?select=id,change_type,scope_label,percentage,affected_products,affected_prices,created_at&order=created_at.desc&limit=50'),
+    ]);
+    state.backups=backups||[];state.history=history||[];state.secondaryLoaded=true;renderSummary();
+  })();
+  try{await state.secondaryLoading;}finally{state.secondaryLoading=null;}
+}
+
 async function loadCloudData(){
   $('#loading-card').hidden=false;
-  const [rows,backups,history]=await Promise.all([
-    dbPages('products?select=id,code,name,bulk_quantity,presentation,notes,display_order,active,catalog:catalogs!inner(slug,name),category:categories(id,name),prices:product_prices(tier,amount)&active=eq.true&order=category_id.asc,display_order.asc,name.asc'),
-    db('catalog_backups?select=id,label,product_count,price_count,created_at,catalog:catalogs(slug,name)&order=created_at.desc&limit=40'),
-    db('price_change_batches?select=id,change_type,scope_label,percentage,affected_products,affected_prices,created_at&order=created_at.desc&limit=50'),
-  ]);
-  state.products=rows.map(productFromRemote);state.backups=backups||[];state.history=history||[];state.selected.clear();
+  await loadCatalogData(state.catalog);state.selected.clear();
   $('#loading-card').hidden=true;setSaveState('Acceso público · nube activa','preview');renderAll();hideBootSplash();
+  setTimeout(()=>loadSecondaryData().catch(()=>{}),0);
 }
 
 function setSaveState(message,kind){const box=$('.save-state');box.className=`save-state ${kind||''}`;$('#save-label').textContent=message;$('#auth-button').textContent=state.preview?'Vista previa':'Acceso público';}
 function catalogProducts(){return state.products.filter(product=>product.catalogo===state.catalog);}
 function catalogName(){return CATALOGS[state.catalog]?.name||state.catalog;}
 function visibleBackups(){return state.backups.filter(backup=>(backup.catalog?.slug||'papelera')===state.catalog);}
-function setCatalog(slug){if(!CATALOGS[slug]||slug===state.catalog)return;state.catalog=slug;state.filters.search='';state.filters.category='';state.selected.clear();state.increase.tiers=new Set(priceFieldsFor(slug).map(field=>field.tier));$('#search').value='';document.querySelectorAll('[data-catalog]').forEach(button=>button.classList.toggle('active',button.dataset.catalog===slug));renderAll();}
+async function setCatalog(slug){
+  if(!CATALOGS[slug]||slug===state.catalog)return;
+  const previous=state.catalog;state.catalog=slug;state.filters.search='';state.filters.category='';state.selected.clear();state.increase.tiers=new Set(priceFieldsFor(slug).map(field=>field.tier));$('#search').value='';document.querySelectorAll('[data-catalog]').forEach(button=>button.classList.toggle('active',button.dataset.catalog===slug));
+  if(!state.preview&&!state.loadedCatalogs.has(slug)){
+    $('#loading-card').hidden=false;$('#catalog').innerHTML='';$('#empty').hidden=true;renderFilters();renderSummary();
+    try{await loadCatalogData(slug);}catch(error){state.catalog=previous;document.querySelectorAll('[data-catalog]').forEach(button=>button.classList.toggle('active',button.dataset.catalog===previous));$('#loading-card').hidden=true;renderAll();showToast(readableError(error));return;}
+    $('#loading-card').hidden=true;
+  }
+  renderAll();
+}
 function renderAll(){renderFilters();renderSummary();renderCatalog();renderQuote();}
 function unique(key,products=catalogProducts()){return [...new Set(products.map(product=>product[key]).filter(Boolean))].sort(alphabetical);}
 function byProductOrder(a,b){return Number(a.orden)-Number(b.orden)||alphabetical(a.nombre,b.nombre)||alphabetical(a.id,b.id);}
@@ -175,14 +205,16 @@ function productRow(product){
 function toggleSelection(input){input.checked?state.selected.add(input.dataset.id):state.selected.delete(input.dataset.id);updateSelectionBar();syncCategoryChecks();}
 function updateSelectionBar(){const count=state.selected.size;$('#selection-bar').hidden=count===0;$('#selection-count').textContent=number(count);}
 function selectedProducts(){return catalogProducts().filter(product=>state.selected.has(product.id));}
-function toggleCategorySelection(input){const products=catalogProducts().filter(product=>product.categoria===input.dataset.category);for(const product of products)input.checked?state.selected.add(product.id):state.selected.delete(product.id);renderCatalog();}
+function syncVisibleProductChecks(){document.querySelectorAll('.product-check').forEach(input=>{input.checked=state.selected.has(input.dataset.id);});}
+function clearSelection(){state.selected.clear();syncVisibleProductChecks();updateSelectionBar();syncCategoryChecks();}
+function toggleCategorySelection(input){const products=catalogProducts().filter(product=>product.categoria===input.dataset.category);for(const product of products)input.checked?state.selected.add(product.id):state.selected.delete(product.id);syncVisibleProductChecks();updateSelectionBar();syncCategoryChecks();}
 function syncCategoryChecks(){document.querySelectorAll('.category-check').forEach(input=>{const products=catalogProducts().filter(product=>product.categoria===input.dataset.category),selected=products.filter(product=>state.selected.has(product.id)).length;input.checked=products.length>0&&selected===products.length;input.indeterminate=selected>0&&selected<products.length;});}
 function categoryRecords(){const records=new Map();for(const product of catalogProducts()){if(!records.has(product.categoria))records.set(product.categoria,{id:product.categoria_id,name:product.categoria,count:0});records.get(product.categoria).count++;}return [...records.values()].sort((a,b)=>alphabetical(a.name,b.name));}
 
 function openCategoryManager(){
   const categories=categoryRecords();
   $('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel panel-wide" role="dialog" aria-modal="true"><div class="panel-head"><div><h2>Categorías</h2><p>Seleccioná, ordená o corregí el nombre de cada categoría.</p></div><button class="icon-close" data-close>×</button></div><div class="category-manager-list">${categories.map(category=>`<div class="category-manager-row"><div><strong>${esc(category.name)}</strong><small>${number(category.count)} productos</small></div><div><button class="btn btn-quiet" data-select-category="${esc(category.name)}">Seleccionar</button><button class="btn btn-secondary" data-manage-order-id="${category.id}" data-manage-order-name="${esc(category.name)}">Ordenar productos</button><button class="btn btn-secondary" data-rename-category-id="${category.id}" data-rename-category-name="${esc(category.name)}">Editar nombre</button></div></div>`).join('')}</div></section></div>`;
-  bindPanelClose();document.querySelectorAll('[data-select-category]').forEach(button=>button.onclick=()=>{for(const product of catalogProducts().filter(item=>item.categoria===button.dataset.selectCategory))state.selected.add(product.id);closePanel();renderCatalog();showToast(`Categoría seleccionada: ${button.dataset.selectCategory}.`);});document.querySelectorAll('[data-manage-order-id]').forEach(button=>button.onclick=()=>openProductOrder(Number(button.dataset.manageOrderId),button.dataset.manageOrderName));document.querySelectorAll('[data-rename-category-id]').forEach(button=>button.onclick=()=>openRenameCategory(Number(button.dataset.renameCategoryId),button.dataset.renameCategoryName));
+  bindPanelClose();document.querySelectorAll('[data-select-category]').forEach(button=>button.onclick=()=>{for(const product of catalogProducts().filter(item=>item.categoria===button.dataset.selectCategory))state.selected.add(product.id);closePanel();syncVisibleProductChecks();updateSelectionBar();syncCategoryChecks();showToast(`Categoría seleccionada: ${button.dataset.selectCategory}.`);});document.querySelectorAll('[data-manage-order-id]').forEach(button=>button.onclick=()=>openProductOrder(Number(button.dataset.manageOrderId),button.dataset.manageOrderName));document.querySelectorAll('[data-rename-category-id]').forEach(button=>button.onclick=()=>openRenameCategory(Number(button.dataset.renameCategoryId),button.dataset.renameCategoryName));
 }
 
 function orderRow(product,index,total){
@@ -237,7 +269,7 @@ async function updatePrice(input){
   if(Number.isNaN(value)||value<0){input.value=priceInput(product[field.key]);showToast('Ingresá un precio válido.');return;}
   if(value===product[field.key]){input.value=priceInput(value);return;}
   const old=product[field.key];product[field.key]=value;input.disabled=true;
-  try{if(!state.preview){await rpc('papelera_set_product_price',{p_product_id:product.id,p_tier:field.tier,p_amount:value});await refreshHistory();}input.value=priceInput(value);renderSummary();showToast(`Precio ${field.label} actualizado.`);}
+  try{if(!state.preview)await rpc('papelera_set_product_price',{p_product_id:product.id,p_tier:field.tier,p_amount:value});input.value=priceInput(value);renderSummary();showToast(`Precio ${field.label} actualizado.`);}
   catch(error){product[field.key]=old;input.value=priceInput(old);showToast(readableError(error));}
   finally{input.disabled=false;}
 }
