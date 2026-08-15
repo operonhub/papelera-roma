@@ -6,7 +6,7 @@ await import('./validate.mjs');
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const output=path.join(root,'dist');
-const publicFiles=['index.html','app.js','styles.css','documentos.js'];
+const publicFiles=['index.html','app.js','styles.css','documentos.js','manifest.webmanifest'];
 
 await fs.rm(output,{recursive:true,force:true});
 await fs.mkdir(output,{recursive:true});
