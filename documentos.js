@@ -135,7 +135,7 @@
     ensure(116+extra);y-=10;rect(ops,350,y-78-extra,211,92+extra,[.91,.97,.95]);
     text(ops,365,y-5,'SUBTOTAL',9,true,TEAL);textRight(ops,558,y-5,money(subtotal),10,true,INK);
     text(ops,365,y-29,`DESCUENTO ${Number(discountPercentage)||0}%`,9,true,TEAL);textRight(ops,558,y-29,`- ${money(discountAmount)}`,10,true,INK);
-    if(previousBalance){text(ops,365,y-53,'SALDO ANTERIOR',9,true,TEAL);textRight(ops,558,y-53,`${previousBalance>0?'+':'−'} ${money(Math.abs(previousBalance))}`,10,true,INK);}
+    if(previousBalance){text(ops,365,y-53,'SALDO ANTERIOR',9,true,TEAL);textRight(ops,558,y-53,`${previousBalance>0?'+':'-'} ${money(Math.abs(previousBalance))}`,10,true,INK);}
     line(ops,365,y-43-extra,558,y-43-extra,[.65,.82,.77]);
     text(ops,365,y-64-extra,'TOTAL',10,true,TEAL);textRight(ops,558,y-65-extra,money(total),14,true,INK);y-=97+extra;
     text(ops,34,y,'Documento no válido como factura. Precios sujetos a confirmación.',7,false,[.35,.48,.46]);
