@@ -103,7 +103,7 @@
     return assemble(pages,pageW,pageH,brand);
   }
 
-  async function buildQuotePdf({number,client,address,date,items,subtotal,discountPercentage,discountAmount,total}){
+  async function buildQuotePdf({number,client,address,date,items,subtotal,discountPercentage,discountAmount,previousBalance,total}){
     const brand=await loadBrand();
     const [pageW,pageH]=A4.portrait,pages=[];let ops,y;
     function tableHeader(){
@@ -131,11 +131,13 @@
       textRight(ops,472,y,money(item.unitPrice),8,false);textRight(ops,558,y,money(item.amount),8,true);
       line(ops,34,y-9,561,y-9);y-=22;
     }
-    ensure(116);y-=10;rect(ops,350,y-78,211,92,[.91,.97,.95]);
+    const extra=previousBalance?24:0;
+    ensure(116+extra);y-=10;rect(ops,350,y-78-extra,211,92+extra,[.91,.97,.95]);
     text(ops,365,y-5,'SUBTOTAL',9,true,TEAL);textRight(ops,558,y-5,money(subtotal),10,true,INK);
     text(ops,365,y-29,`DESCUENTO ${Number(discountPercentage)||0}%`,9,true,TEAL);textRight(ops,558,y-29,`- ${money(discountAmount)}`,10,true,INK);
-    line(ops,365,y-43,558,y-43,[.65,.82,.77]);
-    text(ops,365,y-64,'TOTAL',10,true,TEAL);textRight(ops,558,y-65,money(total),14,true,INK);y-=97;
+    if(previousBalance){text(ops,365,y-53,'SALDO ANTERIOR',9,true,TEAL);textRight(ops,558,y-53,`${previousBalance>0?'+':'−'} ${money(Math.abs(previousBalance))}`,10,true,INK);}
+    line(ops,365,y-43-extra,558,y-43-extra,[.65,.82,.77]);
+    text(ops,365,y-64-extra,'TOTAL',10,true,TEAL);textRight(ops,558,y-65-extra,money(total),14,true,INK);y-=97+extra;
     text(ops,34,y,'Documento no válido como factura. Precios sujetos a confirmación.',7,false,[.35,.48,.46]);
     return assemble(pages,pageW,pageH,brand);
   }

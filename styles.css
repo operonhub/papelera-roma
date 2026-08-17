@@ -41,9 +41,10 @@ button{color:inherit}
 .quote-summary-row{min-height:48px;display:grid;grid-template-columns:1fr 116px;align-items:center;gap:12px;padding:10px 16px;border-top:1px solid #dbe9e5}
 .quote-summary-row:first-child{border-top:0}.quote-summary-row>span,.quote-summary-row>label{font-size:12px;font-weight:780}.quote-summary-row>strong{text-align:right;font-size:14px}
 .quote-discount{grid-template-columns:1fr 88px 116px;background:#f7faf9}.discount-input{height:34px;display:flex;align-items:center;border:1px solid #c5dad4;background:#fff;border-radius:8px;overflow:hidden}.discount-input input{width:100%;height:100%;border:0;padding:0 7px;text-align:right;color:var(--ink);font-weight:750}.discount-input input:focus{outline:0}.discount-input span{padding-right:8px;color:var(--muted);font-size:11px}
+.quote-balance{grid-template-columns:1fr 88px 116px;background:#f7faf9}.balance-input{height:34px;display:flex;align-items:center;border:1px solid #c5dad4;background:#fff;border-radius:8px;overflow:hidden}.balance-input input{width:100%;height:100%;border:0;padding:0 7px;text-align:right;color:var(--ink);font-weight:750}.balance-input input:focus{outline:0}.balance-input span{padding-left:8px;color:var(--muted);font-size:11px}#quote-balance-amount.balance-positive{color:var(--red)}#quote-balance-amount.balance-negative{color:var(--green)}
 .quote-summary .quote-total{min-height:62px;display:grid;grid-template-columns:1fr 116px;align-items:center;gap:12px;background:#def1ea;border:0;border-radius:0;padding:10px 16px;margin:0}.quote-summary .quote-total span{font-size:13px;text-transform:uppercase;color:var(--petrol-2)}.quote-summary .quote-total strong{font-size:23px;color:var(--petrol)}
 .quote-output .document-actions{max-width:720px}
-@media(max-width:620px){.quote-discount{grid-template-columns:1fr 80px 105px}.quote-summary-row,.quote-summary .quote-total{grid-template-columns:1fr 105px;padding-inline:12px}.quote-discount{grid-template-columns:1fr 80px 105px}.quote-output .document-actions{width:100%}.quote-output .document-actions .btn{flex:1 1 150px}}
+@media(max-width:620px){.quote-discount,.quote-balance{grid-template-columns:1fr 80px 105px}.quote-summary-row,.quote-summary .quote-total{grid-template-columns:1fr 105px;padding-inline:12px}.quote-output .document-actions{width:100%}.quote-output .document-actions .btn{flex:1 1 150px}}
 
 /* Acciones agrupadas y administración de categorías. */
 .action-stack{display:grid;flex:0 1 800px;gap:0;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.72);overflow:hidden}
@@ -147,6 +148,8 @@ html[data-theme="dark"] .scope-select select,
 html[data-theme="dark"] .price-input,
 html[data-theme="dark"] .discount-input,
 html[data-theme="dark"] .discount-input input,
+html[data-theme="dark"] .balance-input,
+html[data-theme="dark"] .balance-input input,
 html[data-theme="dark"] .order-search input{background:#12272f;border-color:#355059;color:var(--ink)}
 html[data-theme="dark"] input::placeholder{color:#829a97;opacity:1}
 html[data-theme="dark"] .product-action{color:#a8bfbc}
@@ -161,7 +164,8 @@ html[data-theme="dark"] .quote-summary .quote-total{background:#183b36;border-co
 html[data-theme="dark"] .quote-total strong,
 html[data-theme="dark"] .quote-summary .quote-total strong,
 html[data-theme="dark"] .backup-icon{color:#d9f4ef}
-html[data-theme="dark"] .quote-discount{background:#13272e}
+html[data-theme="dark"] .quote-discount,
+html[data-theme="dark"] .quote-balance{background:#13272e}
 html[data-theme="dark"] .quote-summary{border-color:#31504f}
 html[data-theme="dark"] .quote-summary-row{border-color:#29424a}
 html[data-theme="dark"] .tier-option:has(input:checked){background:#173c36;border-color:#55bca9;color:#8fe5de}
