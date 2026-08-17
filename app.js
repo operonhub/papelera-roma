@@ -403,7 +403,19 @@ function quoteItemRow(row){
 }
 
 function updateQuoteTotals(){const rows=quoteRows(),totals=quoteTotals(rows);for(const row of rows){const total=document.querySelector(`[data-total-id="${row.product.id}"]`);if(total)total.textContent=money(row.amount);}$('#quote-subtotal').textContent=money(totals.subtotal);$('#quote-discount-amount').textContent=`− ${money(totals.discountAmount)}`;const balanceEl=$('#quote-balance-amount');balanceEl.textContent=totals.previousBalance===0?money(0):`${totals.previousBalance>0?'+':'−'} ${money(Math.abs(totals.previousBalance))}`;balanceEl.classList.toggle('balance-positive',totals.previousBalance>0);balanceEl.classList.toggle('balance-negative',totals.previousBalance<0);$('#quote-total').textContent=money(totals.total);}
-function renderQuoteSearch(){const query=$('#quote-search').value.trim(),container=$('#quote-results');if(normalizeSearch(query).length<2){container.hidden=true;container.innerHTML='';return;}const existing=new Set(state.quote.items.map(item=>item.id)),matches=state.products.filter(product=>!existing.has(product.id)&&firstPriceField(product)&&matchesProductSearch(product,query)).slice(0,12);container.hidden=false;container.innerHTML=matches.length?matches.map(product=>`<button type="button" data-quote-add="${product.id}"><span><strong>${esc(product.nombre)}</strong><small>${esc(CATALOGS[product.catalogo]?.name||product.catalogo)} · ${esc(product.categoria)}</small></span><b>Agregar</b></button>`).join(''):'<div class="quote-no-results">No encontramos productos con precio.</div>';container.querySelectorAll('[data-quote-add]').forEach(button=>button.onclick=()=>{const product=state.products.find(item=>item.id===button.dataset.quoteAdd);if(product)state.quote.items.push(newQuoteItem(product));$('#quote-search').value='';container.hidden=true;renderQuote();});}
+async function renderQuoteSearch(){
+  const query=$('#quote-search').value.trim(),container=$('#quote-results');
+  if(normalizeSearch(query).length<2){container.hidden=true;container.innerHTML='';return;}
+  const missing=Object.keys(CATALOGS).filter(slug=>!state.loadedCatalogs.has(slug));
+  if(missing.length){
+    container.hidden=false;container.innerHTML='<div class="quote-no-results">Cargando productos…</div>';
+    try{await Promise.all(missing.map(loadCatalogData));}catch(error){container.innerHTML=`<div class="quote-no-results">${esc(readableError(error))}</div>`;return;}
+    if($('#quote-search').value.trim()!==query)return;
+  }
+  const existing=new Set(state.quote.items.map(item=>item.id)),matches=state.products.filter(product=>!existing.has(product.id)&&firstPriceField(product)&&matchesProductSearch(product,query)).slice(0,12);
+  container.hidden=false;container.innerHTML=matches.length?matches.map(product=>`<button type="button" data-quote-add="${product.id}"><span><strong>${esc(product.nombre)}</strong><small>${esc(CATALOGS[product.catalogo]?.name||product.catalogo)} · ${esc(product.categoria)}</small></span><b>Agregar</b></button>`).join(''):'<div class="quote-no-results">No encontramos productos con precio.</div>';
+  container.querySelectorAll('[data-quote-add]').forEach(button=>button.onclick=()=>{const product=state.products.find(item=>item.id===button.dataset.quoteAdd);if(product)state.quote.items.push(newQuoteItem(product));$('#quote-search').value='';container.hidden=true;renderQuote();});
+}
 
 function confirmClearQuote(){if(!state.quote.items.length){state.quote=createEmptyQuote();renderQuote();return;}$('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel" role="dialog" aria-modal="true"><div class="confirm-card"><div class="confirm-icon">×</div><h2>Vaciar presupuesto</h2><p>Se quitarán los datos del cliente y todos los productos cargados.</p><div class="panel-actions"><button class="btn btn-quiet" data-close>Cancelar</button><button class="btn btn-danger" id="clear-quote-confirm">Vaciar</button></div></div></section></div>`;bindPanelClose();$('#clear-quote-confirm').onclick=()=>{state.quote=createEmptyQuote();closePanel();renderQuote();};}
 
