@@ -413,7 +413,7 @@ async function renderQuoteSearch(){
     if($('#quote-search').value.trim()!==query)return;
   }
   const existing=new Set(state.quote.items.map(item=>item.id)),matches=state.products.filter(product=>!existing.has(product.id)&&firstPriceField(product)&&matchesProductSearch(product,query)).slice(0,12);
-  container.hidden=false;container.innerHTML=matches.length?matches.map(product=>`<button type="button" data-quote-add="${product.id}"><span><strong>${esc(product.nombre)}</strong><small>${esc(CATALOGS[product.catalogo]?.name||product.catalogo)} · ${esc(product.categoria)}</small></span><b>Agregar</b></button>`).join(''):'<div class="quote-no-results">No encontramos productos con precio.</div>';
+  container.hidden=false;container.innerHTML=matches.length?matches.map(product=>`<button type="button" data-quote-add="${product.id}"><span><strong><span class="product-code">${esc(product.codigo)}</span>${esc(product.nombre)}</strong><small>${esc(CATALOGS[product.catalogo]?.name||product.catalogo)} · ${esc(product.categoria)}</small></span><b>Agregar</b></button>`).join(''):'<div class="quote-no-results">No encontramos productos con precio.</div>';
   container.querySelectorAll('[data-quote-add]').forEach(button=>button.onclick=()=>{const product=state.products.find(item=>item.id===button.dataset.quoteAdd);if(product)state.quote.items.push(newQuoteItem(product));$('#quote-search').value='';container.hidden=true;renderQuote();});
 }
 
