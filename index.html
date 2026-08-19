@@ -14,8 +14,12 @@
 </head>
 <body>
   <div id="boot-splash" class="boot-splash" aria-hidden="true">
-    <div class="boot-splash-logo-wrap">
-      <img class="boot-splash-logo" src="assets/logo-papelera-roma.png" alt="">
+    <div class="boot-splash-content">
+      <div class="boot-splash-logo-wrap">
+        <img class="boot-splash-logo" src="assets/logo-papelera-roma.png" alt="">
+      </div>
+      <span class="boot-splash-spinner" aria-hidden="true"></span>
+      <span class="boot-splash-label" id="boot-splash-label">Cargando…</span>
     </div>
   </div>
   <header class="site-header">
@@ -37,6 +41,11 @@
       <button class="app-tab" id="quote-tab" role="tab" aria-selected="false" data-view="quote">Presupuesto</button>
     </div>
   </header>
+
+  <div class="catalog-frozen-header" id="catalog-frozen-header" aria-hidden="true">
+    <div class="catalog-frozen-category" id="catalog-frozen-category"></div>
+    <div class="catalog-frozen-clip"><div class="price-columns-header" id="catalog-frozen-columns"></div></div>
+  </div>
 
   <main class="container main-content">
     <section class="app-view active" id="catalog-view" role="tabpanel" aria-labelledby="catalog-tab">
@@ -73,7 +82,7 @@
         <div><strong id="product-count">—</strong><span>productos</span></div>
         <div><strong id="category-count">—</strong><span>categorías</span></div>
         <div><strong id="price-count">—</strong><span>precios cargados</span></div>
-        <div class="save-state"><i></i><span id="save-label">Conectando con la nube…</span></div>
+        <div class="save-state"><i></i><span id="save-label">Conectando con la nube…</span><button type="button" class="refresh-btn" id="refresh-catalog" title="Actualizar precios desde la nube">↻ Actualizar</button></div>
       </section>
 
       <section class="catalog-card">
@@ -115,7 +124,7 @@
         </section>
 
         <section class="workspace-card quote-detail-card">
-          <div class="section-title"><span>3</span><div><h2>Detalle</h2><p>Elegí la presentación disponible en cada renglón.</p></div></div>
+          <div class="section-title"><span>3</span><div><h2>Detalle</h2><p>Elegí la presentación disponible en cada renglón. Tocá el importe para cobrarle un precio distinto a ese producto.</p></div></div>
           <div class="quote-items" id="quote-items"></div>
           <div class="quote-summary">
             <div class="quote-summary-row"><span>Subtotal</span><strong id="quote-subtotal">$ 0</strong></div>
@@ -139,6 +148,16 @@
   </main>
 
   <div id="panel-root"></div>
+  <button class="scroll-top-btn" id="scroll-top" type="button" aria-label="Volver arriba" title="Volver arriba" tabindex="-1">↑</button>
+  <button class="mobile-search-btn" id="mobile-search" type="button" aria-label="Buscar producto" title="Buscar producto" tabindex="-1">⌕</button>
+  <div class="quick-search" id="quick-search" role="dialog" aria-label="Buscador rápido" hidden>
+    <div class="quick-search-bar">
+      <span>⌕</span>
+      <input id="quick-search-input" type="search" placeholder="Buscar producto o precio…" autocomplete="off">
+      <button type="button" id="quick-search-close" aria-label="Cerrar buscador rápido">×</button>
+    </div>
+    <div class="quick-search-results" id="quick-search-results"></div>
+  </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="documentos.js" defer></script>
   <script src="app.js" defer></script>
