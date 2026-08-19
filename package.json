@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "npx --yes serve . -l 3000",
-    "build": "node scripts/validate.mjs",
+    "check": "node scripts/validate.mjs",
+    "build": "node scripts/build.mjs",
     "supabase:check": "node scripts/import_supabase.mjs",
     "supabase:import": "node scripts/import_supabase.mjs --apply"
   }
