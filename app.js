@@ -114,7 +114,7 @@ function bindStatic(){
   $('#catalog').onclick=event=>{const toggleButton=event.target.closest('[data-toggle-category]');if(toggleButton)return toggleCategory(toggleButton.dataset.toggleCategory);const editButton=event.target.closest('[data-edit-product-id]');if(editButton)return openEditProduct(editButton.dataset.editProductId);const deleteButton=event.target.closest('[data-delete-product-id]');if(deleteButton){const product=state.products.find(item=>item.id===deleteButton.dataset.deleteProductId);if(product)return confirmDeactivateProduct(product);}const orderButton=event.target.closest('[data-order-category-id]');if(orderButton)return openProductOrder(Number(orderButton.dataset.orderCategoryId),orderButton.dataset.orderCategoryName);const categoryButton=event.target.closest('[data-edit-category-id]');if(categoryButton)openRenameCategory(Number(categoryButton.dataset.editCategoryId),categoryButton.dataset.editCategoryName);};
   $('#catalog').onfocusin=event=>{if(event.target.matches('.price-input'))event.target.select();};
   $('#catalog').onkeydown=event=>{if(event.target.matches('.price-input')&&event.key==='Enter')event.target.blur();};
-  $('#new-product').onclick=openNewProduct;$('#download-excel').onclick=()=>downloadExcel(filtered());$('#print-price-list').onclick=openPrintPriceList;$('#share-price-list').onclick=openSharePriceList;$('#manage-categories').onclick=openCategoryManager;$('#save-backup').onclick=saveBackup;$('#view-backups').onclick=openBackups;$('#open-increase').onclick=()=>openIncrease(false);$('#selection-increase').onclick=()=>openIncrease(true);$('#selection-quote').onclick=()=>openQuote(true);$('#clear-selection').onclick=clearSelection;$('#refresh-catalog').onclick=refreshCatalog;
+  $('#new-product').onclick=openNewProduct;$('#download-excel').onclick=()=>downloadExcel(filtered());$('#print-price-list').onclick=openPrintPriceList;$('#share-price-list').onclick=()=>openSharePriceList('pdf');$('#share-price-list-text').onclick=()=>openSharePriceList('text');$('#manage-categories').onclick=openCategoryManager;$('#save-backup').onclick=saveBackup;$('#view-backups').onclick=openBackups;$('#open-increase').onclick=()=>openIncrease(false);$('#selection-increase').onclick=()=>openIncrease(true);$('#selection-quote').onclick=()=>openQuote(true);$('#clear-selection').onclick=clearSelection;$('#refresh-catalog').onclick=refreshCatalog;
   $('#expand-categories').onclick=expandAllCategories;$('#collapse-categories').onclick=collapseAllCategories;
   $('#quote-search').oninput=debounce(renderQuoteSearch,120);$('#clear-quote').onclick=confirmClearQuote;
   for(const id of ['quote-client','quote-address'])$('#'+id).oninput=syncQuoteFields;
@@ -574,10 +574,10 @@ function openPrintPriceList(){
   bindPanelClose();$('#print-list-form').onsubmit=event=>{event.preventDefault();const scope=new FormData(event.currentTarget).get('print-scope')||'all';closePanel();printPriceList(scope);};
 }
 async function printPriceList(scope='all'){const selected=scope==='selected',items=selected?selectedProducts():catalogProducts(),data=priceListData(items,selected?`Selección · ${number(items.length)} productos`:'Lista completa');if(!data.items.length)return showToast(selected?'No hay productos seleccionados para imprimir.':'No hay productos para imprimir.');const target=window.open('','_blank');try{const bytes=await window.RomaDocuments.buildPriceListPdf(data);window.RomaDocuments.print(bytes,target);showToast(`Lista lista para imprimir: ${number(data.items.length)} productos.`);}catch(error){target?.close();showToast(readableError(error));}}
-function openSharePriceList(){
-  const allCount=catalogProducts().length,selectedCount=selectedProducts().length,defaultScope=selectedCount?'selected':'all';
-  $('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel" role="dialog" aria-modal="true" aria-labelledby="share-list-title"><div class="panel-head"><div><h2 id="share-list-title">Enviar lista por WhatsApp</h2><p>Elegí qué productos querés incluir en el PDF.</p></div><button class="icon-close" type="button" data-close>×</button></div><form id="share-list-form"><div class="print-scope-grid"><label class="print-scope-option"><input type="radio" name="share-scope" value="all" ${defaultScope==='all'?'checked':''}><span><strong>Toda la lista</strong><small>${number(allCount)} productos de ${esc(catalogName())}</small></span></label><label class="print-scope-option ${selectedCount?'':'disabled'}"><input type="radio" name="share-scope" value="selected" ${defaultScope==='selected'?'checked':''} ${selectedCount?'':'disabled'}><span><strong>Solo los seleccionados</strong><small>${selectedCount?`${number(selectedCount)} producto${selectedCount===1?'':'s'} seleccionado${selectedCount===1?'':'s'}`:'Seleccioná productos desde la lista para habilitar esta opción'}</small></span></label></div><div class="panel-actions"><button class="btn btn-quiet" type="button" data-close>Cancelar</button><button class="btn btn-accent" type="submit">Continuar</button></div></form></section></div>`;
-  bindPanelClose();$('#share-list-form').onsubmit=event=>{event.preventDefault();const scope=new FormData(event.currentTarget).get('share-scope')||'all';closePanel();sharePriceList(scope);};
+function openSharePriceList(mode='pdf'){
+  const allCount=catalogProducts().length,selectedCount=selectedProducts().length,defaultScope=selectedCount?'selected':'all',isText=mode==='text';
+  $('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel" role="dialog" aria-modal="true" aria-labelledby="share-list-title"><div class="panel-head"><div><h2 id="share-list-title">${isText?'Enviar como texto por WhatsApp':'Enviar lista por WhatsApp'}</h2><p>Elegí qué productos querés incluir${isText?' en el mensaje':' en el PDF'}.</p></div><button class="icon-close" type="button" data-close>×</button></div><form id="share-list-form"><div class="print-scope-grid"><label class="print-scope-option"><input type="radio" name="share-scope" value="all" ${defaultScope==='all'?'checked':''}><span><strong>Toda la lista</strong><small>${number(allCount)} productos de ${esc(catalogName())}</small></span></label><label class="print-scope-option ${selectedCount?'':'disabled'}"><input type="radio" name="share-scope" value="selected" ${defaultScope==='selected'?'checked':''} ${selectedCount?'':'disabled'}><span><strong>Solo los seleccionados</strong><small>${selectedCount?`${number(selectedCount)} producto${selectedCount===1?'':'s'} seleccionado${selectedCount===1?'':'s'}`:'Seleccioná productos desde la lista para habilitar esta opción'}</small></span></label></div><div class="panel-actions"><button class="btn btn-quiet" type="button" data-close>Cancelar</button><button class="btn btn-accent" type="submit">Continuar</button></div></form></section></div>`;
+  bindPanelClose();$('#share-list-form').onsubmit=event=>{event.preventDefault();const scope=new FormData(event.currentTarget).get('share-scope')||'all';closePanel();(isText?sharePriceListText:sharePriceList)(scope);};
 }
 async function sharePriceList(scope='all'){
   const selected=scope==='selected',items=selected?selectedProducts():catalogProducts(),data=priceListData(items,selected?`Selección · ${number(items.length)} productos`:'Lista completa');
@@ -590,6 +590,21 @@ async function sharePriceList(scope='all'){
       if(target&&!target.closed)target.location.href=url;else window.open(url,'_blank','noopener');
       showToast('Lista descargada para adjuntar en WhatsApp.');
     }else target?.close();
+  }catch(error){target?.close();showToast(readableError(error));}
+}
+function priceListLine(product){
+  const fields=priceFieldsFor(product.catalogo).filter(field=>isPrice(product[field.key])),detail=product.catalogo==='heladeria'&&product.presentacion?` (${product.presentacion})`:'',tiers=fields.map(field=>`${field.label} ${money(product[field.key])}`).join(' · ');
+  return `${product.codigo} · ${product.nombre}${detail}${tiers?` — ${tiers}`:' — sin precio'}`;
+}
+function sharePriceListText(scope='all'){
+  const selected=scope==='selected',items=selected?selectedProducts():catalogProducts();
+  if(!items.length)return showToast(selected?'No hay productos seleccionados para compartir.':'No hay productos para compartir.');
+  const target=window.open('','_blank');
+  try{
+    const lines=[`*${catalogName().toUpperCase()} · PAPELERA ROMA*`,selected?`Selección · ${number(items.length)} productos`:`Lista completa · ${number(items.length)} productos`,'',...items.map(priceListLine)],text=lines.join('\n');
+    if(text.length>6000){target?.close();showToast('La selección es muy grande para enviar como texto. Elegí menos productos o usá el PDF.');return;}
+    const url=`https://wa.me/?text=${encodeURIComponent(text)}`;
+    if(target&&!target.closed)target.location.href=url;else window.open(url,'_blank','noopener');
   }catch(error){target?.close();showToast(readableError(error));}
 }
 
