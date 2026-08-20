@@ -11,7 +11,7 @@ const PRICE_FIELDS=[...PAPELERA_PRICE_FIELDS,...HELADERIA_PRICE_FIELDS];
 const FIELD_BY_TIER=new Map(PRICE_FIELDS.map(field=>[field.tier,field]));
 const CATALOGS={papelera:{slug:'papelera',name:'Papelera'},heladeria:{slug:'heladeria',name:'Heladería'}};
 const state={
-  preview:false,products:[],backups:[],history:[],selected:new Set(),
+  preview:false,products:[],backups:[],history:[],savedQuotes:[],selected:new Set(),
   expandedCategories:new Set(),
   loadedCatalogs:new Set(),secondaryLoaded:false,secondaryLoading:null,
   catalog:'papelera',
@@ -88,12 +88,13 @@ function normaliseProduct(raw){
   product.orden=Number(raw.orden??raw.display_order??raw.fuente_fila??raw.source_row??0)||0;
   product.fuente_fila=Number(raw.fuente_fila??raw.source_row??0)||0;
   product.activo=raw.activo===undefined?raw.active!==false:String(raw.activo).toUpperCase()!=='FALSE';
+  product.highlight=raw.highlight||null;
   return product;
 }
 
 function productFromRemote(row){
   const prices=Object.fromEntries((row.prices||[]).map(price=>[price.tier,Number(price.amount)]));
-  return normaliseProduct({id:row.id,codigo:row.code,nombre:row.name,categoria:row.category?.name||'Sin categoría',categoria_id:row.category?.id??null,categoria_orden:row.category?.display_order??0,catalog_slug:row.catalog?.slug||'papelera',cantidad_bulto:row.bulk_quantity,presentacion:row.presentation,observaciones:row.notes,source_row:row.source_row,display_order:row.display_order,active:row.active,...Object.fromEntries(PRICE_FIELDS.map(field=>[field.key,prices[field.tier]??null]))});
+  return normaliseProduct({id:row.id,codigo:row.code,nombre:row.name,categoria:row.category?.name||'Sin categoría',categoria_id:row.category?.id??null,categoria_orden:row.category?.display_order??0,catalog_slug:row.catalog?.slug||'papelera',cantidad_bulto:row.bulk_quantity,presentacion:row.presentation,observaciones:row.notes,source_row:row.source_row,display_order:row.display_order,active:row.active,highlight:row.highlight,...Object.fromEntries(PRICE_FIELDS.map(field=>[field.key,prices[field.tier]??null]))});
 }
 
 function productFromSnapshot(row){
@@ -130,7 +131,7 @@ function bindStatic(){
   for(const id of ['quote-client','quote-address'])$('#'+id).oninput=syncQuoteFields;
   $('#quote-discount').oninput=event=>{state.quote.discountPercentage=normaliseDiscount(event.target.value);updateQuoteTotals();};
   $('#quote-balance').oninput=event=>{state.quote.previousBalance=normalisePreviousBalance(event.target.value);updateQuoteTotals();};
-  $('#quote-pdf').onclick=printQuotePdf;$('#quote-excel').onclick=downloadQuoteExcel;$('#quote-whatsapp').onclick=shareQuotePdf;$('#quote-text').onclick=shareQuoteText;
+  $('#quote-pdf').onclick=printQuotePdf;$('#quote-excel').onclick=downloadQuoteExcel;$('#quote-whatsapp').onclick=shareQuotePdf;$('#quote-text').onclick=shareQuoteText;$('#save-quote-cloud').onclick=saveQuoteToCloud;$('#view-saved-quotes').onclick=openSavedQuotes;
   bindScrollTop();bindQuickSearch();bindCatalogFrozenHeader();
 }
 
@@ -249,7 +250,7 @@ async function dbPages(path,size=1000){
 async function rpc(name,body){return db(`rpc/${name}`,{method:'POST',body,prefer:'return=representation'});}
 
 function catalogProductsPath(slug){
-  return `products?select=id,code,name,bulk_quantity,presentation,notes,source_row,display_order,active,catalog:catalogs!inner(slug,name),category:categories(id,name,display_order),prices:product_prices(tier,amount)&catalog.slug=eq.${encodeURIComponent(slug)}&active=eq.true&order=source_row.asc.nullslast,display_order.asc,name.asc`;
+  return `products?select=id,code,name,bulk_quantity,presentation,notes,source_row,display_order,active,highlight,catalog:catalogs!inner(slug,name),category:categories(id,name,display_order),prices:product_prices(tier,amount)&catalog.slug=eq.${encodeURIComponent(slug)}&active=eq.true&order=source_row.asc.nullslast,display_order.asc,name.asc`;
 }
 
 async function loadCatalogData(slug){
@@ -262,11 +263,12 @@ async function loadSecondaryData(){
   if(state.preview||state.secondaryLoaded)return;
   if(state.secondaryLoading)return state.secondaryLoading;
   state.secondaryLoading=(async()=>{
-    const [backups,history]=await Promise.all([
+    const [backups,history,savedQuotes]=await Promise.all([
       db('catalog_backups?select=id,label,product_count,price_count,created_at,catalog:catalogs(slug,name)&order=created_at.desc&limit=40'),
       db('price_change_batches?select=id,change_type,scope_label,percentage,affected_products,affected_prices,created_at&order=created_at.desc&limit=50'),
+      db('saved_quotes?select=id,label,item_count,total,updated_at&order=updated_at.desc&limit=40'),
     ]);
-    state.backups=backups||[];state.history=history||[];state.secondaryLoaded=true;renderSummary();
+    state.backups=backups||[];state.history=history||[];state.savedQuotes=savedQuotes||[];state.secondaryLoaded=true;renderSummary();$('#saved-quotes-count').textContent=number(state.savedQuotes.length);
   })();
   try{await state.secondaryLoading;}finally{state.secondaryLoading=null;}
 }
@@ -358,7 +360,7 @@ function productActionIcon(kind){return kind==='edit'?'<svg viewBox="0 0 24 24" 
 function productRow(product){
   const fields=priceFieldsFor(product.catalogo),prices=fields.map(field=>`<div class="price-wrap"><span class="mobile-price-label">${field.label} ($)</span><input class="price-input" data-id="${product.id}" data-tier="${field.tier}" value="${priceInput(product[field.key])}" inputmode="numeric" placeholder="—" aria-label="Precio ${field.label} de ${esc(product.nombre)}"></div>`).join(''),detail=product.catalogo==='heladeria'?`<div class="bulk-quantity"><span class="mobile-price-label">Cantidad / presentación</span><span>${esc(product.presentacion||'—')}</span></div>${prices}`:`${prices}<div class="bulk-quantity"><span class="mobile-price-label">Contenido del bulto</span><span>${esc(product.cantidad_bulto||'—')}</span></div>`;
   const actions=`<div class="product-actions"><button type="button" class="product-action product-action-edit" data-edit-product-id="${product.id}" aria-label="Editar producto ${esc(product.nombre)}" title="Editar producto">${productActionIcon('edit')}</button><button type="button" class="product-action product-action-delete" data-delete-product-id="${product.id}" aria-label="Eliminar producto ${esc(product.nombre)}" title="Eliminar producto">${productActionIcon('delete')}</button></div>`;
-  return `<div class="product-row"><input class="product-check" type="checkbox" data-id="${product.id}" ${state.selected.has(product.id)?'checked':''} aria-label="Seleccionar ${esc(product.codigo)} ${esc(product.nombre)}"><div class="product-info"><strong><span class="product-code">${esc(product.codigo)}</span><span class="product-name">${esc(product.nombre)}</span></strong>${product.observaciones?`<small><span class="product-note">${esc(product.observaciones)}</span></small>`:''}</div>${detail}${actions}</div>`;
+  return `<div class="product-row${product.highlight?` highlight-${product.highlight}`:''}"><input class="product-check" type="checkbox" data-id="${product.id}" ${state.selected.has(product.id)?'checked':''} aria-label="Seleccionar ${esc(product.codigo)} ${esc(product.nombre)}"><div class="product-info"><strong><span class="product-code">${esc(product.codigo)}</span><span class="product-name">${esc(product.nombre)}</span></strong>${product.observaciones?`<small><span class="product-note">${esc(product.observaciones)}</span></small>`:''}</div>${detail}${actions}</div>`;
 }
 
 function toggleSelection(input){input.checked?state.selected.add(input.dataset.id):state.selected.delete(input.dataset.id);updateSelectionBar();syncCategoryChecks();}
@@ -435,7 +437,7 @@ async function updatePrice(input){
 
 function openNewProduct(){
   const categories=unique('categoria'),fields=priceFieldsFor(state.catalog),catalogFields=state.catalog==='heladeria'?`<div class="field"><label>Cantidad / presentación</label><input id="product-presentation" placeholder="Ej: Caja x 100"></div>${fields.map(field=>`<div class="field"><label>${field.label}</label><input id="new-${field.tier}" type="number" min="0" step="1" placeholder="Sin precio"></div>`).join('')}`:`${fields.map(field=>`<div class="field"><label>Precio ${field.label}</label><input id="new-${field.tier}" type="number" min="0" step="1" placeholder="Sin precio"></div>`).join('')}<div class="field"><label>Contenido del bulto</label><input id="product-bulk" placeholder="Ej: 12 paquetes x 100"></div>`;
-  $('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel" role="dialog" aria-modal="true"><div class="panel-head"><div><h2>Nuevo producto · ${esc(catalogName())}</h2><p>El código se completa solo, pero también podés escribirlo o corregirlo.</p></div><button class="icon-close" data-close>×</button></div><form id="product-form"><div class="product-form"><div class="field"><label for="product-code">Código</label><input id="product-code" maxlength="7" placeholder="Automático: ${nextProductCode()}" autocapitalize="characters"><small class="form-help">Formato ${codeFormatHint(state.catalog)}</small></div><div class="field field-wide"><label>Nombre <span class="required">*</span></label><input id="product-name" required></div><div class="field field-wide"><label>Categoría <span class="required">*</span></label><input id="product-category" list="category-options" required><datalist id="category-options">${categories.map(value=>`<option value="${esc(value)}"></option>`).join('')}</datalist></div>${catalogFields}<div class="field field-wide"><label>Observaciones</label><input id="product-notes" placeholder="Opcional"></div></div><div id="product-error" class="form-error" hidden></div><div class="panel-actions"><button class="btn btn-quiet" type="button" data-close>Cancelar</button><button class="btn btn-accent" id="product-submit" type="submit">Guardar producto</button></div></form></section></div>`;
+  $('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel" role="dialog" aria-modal="true"><div class="panel-head"><div><h2>Nuevo producto · ${esc(catalogName())}</h2><p>El código se completa solo, pero también podés escribirlo o corregirlo.</p></div><button class="icon-close" data-close>×</button></div><form id="product-form"><div class="product-form"><div class="field"><label for="product-code">Código</label><input id="product-code" maxlength="7" placeholder="Automático: ${nextProductCode()}" autocapitalize="characters"><small class="form-help">Formato ${codeFormatHint(state.catalog)}</small></div><div class="field field-wide"><label>Nombre <span class="required">*</span></label><input id="product-name" required></div><div class="field field-wide"><label>Categoría <span class="required">*</span></label><input id="product-category" list="category-options" required><datalist id="category-options">${categories.map(value=>`<option value="${esc(value)}"></option>`).join('')}</datalist></div>${catalogFields}<div class="field field-wide"><label>Observaciones</label><input id="product-notes" placeholder="Opcional"></div>${highlightPickerField(null)}</div><div id="product-error" class="form-error" hidden></div><div class="panel-actions"><button class="btn btn-quiet" type="button" data-close>Cancelar</button><button class="btn btn-accent" id="product-submit" type="submit">Guardar producto</button></div></form></section></div>`;
   bindPanelClose();$('#product-form').onsubmit=createProduct;setTimeout(()=>$('#product-name')?.focus(),50);
 }
 
@@ -446,13 +448,17 @@ async function createProduct(event){
   const fields=priceFieldsFor(state.catalog),prices={};for(const field of fields){const value=parsePrice($(`#new-${field.tier}`).value);if(Number.isNaN(value)||value<0){error.textContent='Revisá los precios ingresados.';error.hidden=false;return;}if(value!==null)prices[field.tier]=value;}
   button.disabled=true;button.textContent='Guardando…';
   try{
-    const bulk=$('#product-bulk')?.value.trim()||'',presentation=$('#product-presentation')?.value.trim()||'';
-    if(state.preview){state.products.push(normaliseProduct({id:crypto.randomUUID(),code:code||nextProductCode(),name,categoria:category,catalog_slug:state.catalog,bulk_quantity:bulk,presentacion:presentation,notes:$('#product-notes').value,...Object.fromEntries(fields.map(field=>[field.key,prices[field.tier]??null]))}));}
-    else{await rpc('papelera_create_product_v2',{p_name:name,p_category:category,p_bulk_quantity:bulk,p_presentation:presentation,p_notes:$('#product-notes').value.trim(),p_prices:prices,p_catalog_slug:state.catalog,p_code:code||null});await loadCloudData();}
+    const bulk=$('#product-bulk')?.value.trim()||'',presentation=$('#product-presentation')?.value.trim()||'',highlight=document.querySelector('input[name="product-highlight"]:checked')?.value||null;
+    if(state.preview){state.products.push(normaliseProduct({id:crypto.randomUUID(),code:code||nextProductCode(),name,categoria:category,catalog_slug:state.catalog,bulk_quantity:bulk,presentacion:presentation,notes:$('#product-notes').value,highlight,...Object.fromEntries(fields.map(field=>[field.key,prices[field.tier]??null]))}));}
+    else{await rpc('papelera_create_product_v2',{p_name:name,p_category:category,p_bulk_quantity:bulk,p_presentation:presentation,p_notes:$('#product-notes').value.trim(),p_prices:prices,p_catalog_slug:state.catalog,p_code:code||null,p_highlight:highlight});await loadCloudData();}
     closePanel();renderAll();showToast(`${name} fue agregado.`);
   }catch(failure){error.textContent=readableError(failure);error.hidden=false;button.disabled=false;button.textContent='Guardar producto';}
 }
 
+function highlightPickerField(selected){
+  const options=[['','Sin resaltar','ninguno'],['amarillo','Amarillo','amarillo'],['verde','Verde','verde'],['rosa','Rosa','rosa']];
+  return `<div class="field field-wide"><label>Resaltar</label><div class="highlight-picker">${options.map(([value,label,swatch])=>`<label class="highlight-option"><input type="radio" name="product-highlight" value="${value}" ${(selected||'')===value?'checked':''}><span class="highlight-swatch ${swatch}"></span>${esc(label)}</label>`).join('')}</div></div>`;
+}
 function productFormFields(product){
   return product.catalogo==='heladeria'?`<div class="field"><label for="product-presentation">Cantidad / presentación</label><input id="product-presentation" maxlength="160" value="${esc(product.presentacion)}" placeholder="Ej: Caja x 100"></div>`:`<div class="field"><label for="product-bulk">Contenido del bulto</label><input id="product-bulk" maxlength="160" value="${esc(product.cantidad_bulto)}" placeholder="Ej: 12 paquetes x 100"></div>`;
 }
@@ -460,17 +466,17 @@ function productFormFields(product){
 function openEditProduct(id){
   const product=state.products.find(item=>item.id===id);if(!product)return;
   const categories=unique('categoria',state.products.filter(item=>item.catalogo===product.catalogo));
-  $('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel" role="dialog" aria-modal="true"><div class="panel-head"><div><h2>Editar producto · ${esc(CATALOGS[product.catalogo]?.name||product.catalogo)}</h2><p>Corregí el código o los datos generales. Los precios se editan directamente desde la lista.</p></div><button class="icon-close" data-close>×</button></div><form id="edit-product-form"><div class="product-form"><div class="field"><label for="edit-product-code">Código <span class="required">*</span></label><input id="edit-product-code" maxlength="7" value="${esc(product.codigo)}" autocapitalize="characters" required><small class="form-help">Formato ${codeFormatHint(product.catalogo)}</small></div><div class="field field-wide"><label for="edit-product-name">Nombre <span class="required">*</span></label><input id="edit-product-name" maxlength="240" value="${esc(product.nombre)}" required></div><div class="field field-wide"><label for="edit-product-category">Categoría <span class="required">*</span></label><input id="edit-product-category" maxlength="120" list="edit-category-options" value="${esc(product.categoria)}" required><datalist id="edit-category-options">${categories.map(value=>`<option value="${esc(value)}"></option>`).join('')}</datalist></div>${productFormFields(product)}<div class="field field-wide"><label for="edit-product-notes">Observaciones</label><input id="edit-product-notes" maxlength="500" value="${esc(product.observaciones)}" placeholder="Opcional"></div></div><div id="edit-product-error" class="form-error" hidden></div><div class="panel-actions"><button class="btn btn-quiet" type="button" data-close>Cancelar</button><button class="btn btn-accent" id="edit-product-submit" type="submit">Guardar cambios</button></div></form></section></div>`;
+  $('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel" role="dialog" aria-modal="true"><div class="panel-head"><div><h2>Editar producto · ${esc(CATALOGS[product.catalogo]?.name||product.catalogo)}</h2><p>Corregí el código o los datos generales. Los precios se editan directamente desde la lista.</p></div><button class="icon-close" data-close>×</button></div><form id="edit-product-form"><div class="product-form"><div class="field"><label for="edit-product-code">Código <span class="required">*</span></label><input id="edit-product-code" maxlength="7" value="${esc(product.codigo)}" autocapitalize="characters" required><small class="form-help">Formato ${codeFormatHint(product.catalogo)}</small></div><div class="field field-wide"><label for="edit-product-name">Nombre <span class="required">*</span></label><input id="edit-product-name" maxlength="240" value="${esc(product.nombre)}" required></div><div class="field field-wide"><label for="edit-product-category">Categoría <span class="required">*</span></label><input id="edit-product-category" maxlength="120" list="edit-category-options" value="${esc(product.categoria)}" required><datalist id="edit-category-options">${categories.map(value=>`<option value="${esc(value)}"></option>`).join('')}</datalist></div>${productFormFields(product)}<div class="field field-wide"><label for="edit-product-notes">Observaciones</label><input id="edit-product-notes" maxlength="500" value="${esc(product.observaciones)}" placeholder="Opcional"></div>${highlightPickerField(product.highlight)}</div><div id="edit-product-error" class="form-error" hidden></div><div class="panel-actions"><button class="btn btn-quiet" type="button" data-close>Cancelar</button><button class="btn btn-accent" id="edit-product-submit" type="submit">Guardar cambios</button></div></form></section></div>`;
   bindPanelClose();$('#edit-product-form').onsubmit=event=>updateProduct(event,product);setTimeout(()=>{$('#edit-product-name')?.focus();$('#edit-product-name')?.select();},50);
 }
 
 async function updateProduct(event,product){
-  event.preventDefault();const name=$('#edit-product-name').value.trim(),category=$('#edit-product-category').value.trim(),code=$('#edit-product-code').value.trim().toUpperCase(),bulk=$('#product-bulk')?.value.trim()||'',presentation=$('#product-presentation')?.value.trim()||'',notes=$('#edit-product-notes').value.trim(),error=$('#edit-product-error'),button=$('#edit-product-submit');
+  event.preventDefault();const name=$('#edit-product-name').value.trim(),category=$('#edit-product-category').value.trim(),code=$('#edit-product-code').value.trim().toUpperCase(),bulk=$('#product-bulk')?.value.trim()||'',presentation=$('#product-presentation')?.value.trim()||'',notes=$('#edit-product-notes').value.trim(),highlight=document.querySelector('input[name="product-highlight"]:checked')?.value||null,error=$('#edit-product-error'),button=$('#edit-product-submit');
   if(!name||!category){error.textContent='Completá nombre y categoría.';error.hidden=false;return;}button.disabled=true;button.textContent='Guardando…';
   if(!validProductCode(code,product.catalogo)){error.textContent=`El código debe tener el formato ${codeFormatHint(product.catalogo)}.`;error.hidden=false;button.disabled=false;button.textContent='Guardar cambios';return;}
   try{
-    if(state.preview){Object.assign(product,{codigo:code,nombre:name,categoria:category,cantidad_bulto:bulk,presentacion:presentation,observaciones:notes});}
-    else{await rpc('papelera_update_product_v2',{p_product_id:product.id,p_name:name,p_category:category,p_bulk_quantity:bulk,p_presentation:presentation,p_notes:notes,p_code:code});await loadCloudData();}
+    if(state.preview){Object.assign(product,{codigo:code,nombre:name,categoria:category,cantidad_bulto:bulk,presentacion:presentation,observaciones:notes,highlight});}
+    else{await rpc('papelera_update_product_v2',{p_product_id:product.id,p_name:name,p_category:category,p_bulk_quantity:bulk,p_presentation:presentation,p_notes:notes,p_code:code,p_highlight:highlight});await loadCloudData();}
     closePanel();renderAll();showToast(`${name} fue actualizado.`);
   }catch(failure){error.textContent=readableError(failure);error.hidden=false;button.disabled=false;button.textContent='Guardar cambios';}
 }
@@ -516,7 +522,7 @@ async function applyIncrease(){
   }catch(error){showToast(readableError(error));button.disabled=false;updateIncreasePreview();}
 }
 
-function createEmptyQuote(){return {number:null,client:'',address:'',discountPercentage:0,previousBalance:0,items:[]};}
+function createEmptyQuote(){return {number:null,savedId:null,client:'',address:'',discountPercentage:0,previousBalance:0,items:[]};}
 function goView(view){state.view=view;document.querySelectorAll('.app-view').forEach(section=>{const active=section.id===`${view}-view`;section.classList.toggle('active',active);section.hidden=!active;});document.querySelectorAll('.app-tab').forEach(tab=>{const active=tab.dataset.view===view;tab.classList.toggle('active',active);tab.setAttribute('aria-selected',String(active));});if(view==='quote')renderQuote();window.scrollTo({top:0,behavior:'smooth'});requestCatalogFrozenHeaderUpdate();}
 function openQuote(seedSelection=false){if(seedSelection){for(const product of selectedProducts())if(firstPriceField(product)&&!state.quote.items.some(item=>item.id===product.id))state.quote.items.push(newQuoteItem(product));}goView('quote');}
 function firstPriceField(product){return priceFieldsFor(product.catalogo).find(field=>isPrice(product[field.key]))||null;}
@@ -646,6 +652,62 @@ function backupRow(backup,index){const date=new Intl.DateTimeFormat('es-AR',{day
 async function downloadBackup(id){try{const [backup]=await db(`catalog_backups?select=snapshot,created_at,label&id=eq.${id}&limit=1`);if(!backup)throw new Error('Copia no encontrada.');downloadExcel((backup.snapshot?.products||[]).map(productFromSnapshot),backup.created_at,`papelera-roma-${state.catalog}-copia-${todayIso()}.xls`);}catch(error){showToast(readableError(error));}}
 function confirmRestore(id){const backup=state.backups.find(item=>item.id===id);if(!backup)return;$('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel"><div class="confirm-card"><div class="confirm-icon">◷</div><h2>Restaurar copia</h2><p>El catálogo activo volverá a <strong>${number(backup.product_count)} productos</strong> y <strong>${number(backup.price_count)} precios</strong>.</p><div class="notice">Los productos creados después de esta copia quedarán inactivos; no se borran físicamente.</div><div class="panel-actions"><button class="btn btn-quiet" id="restore-back">Volver</button><button class="btn btn-accent" id="restore-confirm">Restaurar</button></div></div></section></div>`;$('#restore-back').onclick=renderBackupsModal;$('#restore-confirm').onclick=async()=>{const button=$('#restore-confirm');button.disabled=true;button.textContent='Restaurando…';try{await rpc('papelera_restore_catalog_backup',{p_backup_id:id});closePanel();await loadCloudData();showToast('La copia fue restaurada.');}catch(error){showToast(readableError(error));button.disabled=false;button.textContent='Restaurar';}};}
 function confirmDeleteBackup(id){$('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel"><div class="confirm-card"><div class="confirm-icon">×</div><h2>Eliminar copia</h2><p>La copia se borrará de la nube. Esta acción no se puede deshacer.</p><div class="panel-actions"><button class="btn btn-quiet" id="delete-back">Volver</button><button class="btn btn-danger" id="delete-confirm">Eliminar</button></div></div></section></div>`;$('#delete-back').onclick=renderBackupsModal;$('#delete-confirm').onclick=async()=>{try{await db(`catalog_backups?id=eq.${id}`,{method:'DELETE'});await refreshBackups();renderBackupsModal();showToast('Copia eliminada.');}catch(error){showToast(readableError(error));}};}
+
+async function refreshSavedQuotes(){if(state.preview)return;state.savedQuotes=await db('saved_quotes?select=id,label,item_count,total,updated_at&order=updated_at.desc&limit=40');$('#saved-quotes-count').textContent=number(state.savedQuotes.length);}
+async function openSavedQuotes(){
+  if(state.preview)return showToast('Los presupuestos guardados no están disponibles en la vista previa local.');
+  $('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel panel-wide"><div class="panel-head"><div><h2>Presupuestos guardados</h2><p>Se guardan en Papelera Roma y están disponibles desde cualquier dispositivo.</p></div><button class="icon-close" data-close>×</button></div><div class="loading-card"><span class="spinner"></span><strong>Cargando presupuestos</strong></div></section></div>`;
+  bindPanelClose();
+  try{await refreshSavedQuotes();renderSavedQuotesModal();}catch(error){closePanel();showToast(readableError(error));}
+}
+function renderSavedQuotesModal(){
+  const quotes=state.savedQuotes;
+  $('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel panel-wide" role="dialog" aria-modal="true"><div class="panel-head"><div><h2>Presupuestos guardados</h2><p>Abrí uno para seguir editándolo, eliminarlo o enviarlo desde ahí.</p></div><button class="icon-close" data-close>×</button></div>${quotes.length?`<div class="backup-list">${quotes.map(savedQuoteRow).join('')}</div>`:'<div class="panel-empty"><strong>Todavía no hay presupuestos guardados</strong><span>Usá “☁ Guardar presupuesto” desde el presupuesto.</span></div>'}</section></div>`;
+  bindPanelClose();
+  document.querySelectorAll('[data-saved-quote-open]').forEach(button=>button.onclick=()=>loadSavedQuote(button.dataset.savedQuoteOpen));
+  document.querySelectorAll('[data-saved-quote-delete]').forEach(button=>button.onclick=()=>confirmDeleteSavedQuote(button.dataset.savedQuoteDelete));
+}
+function savedQuoteRow(quote){
+  const date=new Intl.DateTimeFormat('es-AR',{day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(quote.updated_at));
+  return `<div class="backup-item"><div class="backup-icon">📄</div><div class="backup-info"><strong>${esc(quote.label||'Presupuesto sin nombre')}</strong><small>${date} · ${number(quote.item_count)} producto${quote.item_count===1?'':'s'} · ${money(quote.total)}</small></div><div class="backup-actions"><button class="btn btn-secondary" data-saved-quote-open="${quote.id}">Abrir</button><button class="btn btn-danger" data-saved-quote-delete="${quote.id}">Eliminar</button></div></div>`;
+}
+async function loadSavedQuote(id){
+  try{
+    const [row]=await db(`saved_quotes?select=*&id=eq.${id}&limit=1`);
+    if(!row)throw new Error('Presupuesto no encontrado.');
+    const missing=Object.keys(CATALOGS).filter(slug=>!state.loadedCatalogs.has(slug));
+    if(missing.length)await Promise.all(missing.map(loadCatalogData));
+    const snapshot=row.snapshot||{};
+    state.quote={number:null,savedId:row.id,client:snapshot.client||'',address:snapshot.address||'',discountPercentage:normaliseDiscount(snapshot.discountPercentage),previousBalance:normalisePreviousBalance(snapshot.previousBalance),items:Array.isArray(snapshot.items)?snapshot.items:[]};
+    closePanel();goView('quote');showToast(`Presupuesto "${row.label||'sin nombre'}" cargado.`);
+  }catch(error){showToast(readableError(error));}
+}
+function confirmDeleteSavedQuote(id){
+  $('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel"><div class="confirm-card"><div class="confirm-icon">×</div><h2>Eliminar presupuesto</h2><p>El presupuesto guardado se borrará de la nube. Esta acción no se puede deshacer.</p><div class="panel-actions"><button class="btn btn-quiet" id="delete-quote-back">Volver</button><button class="btn btn-danger" id="delete-quote-confirm">Eliminar</button></div></div></section></div>`;
+  bindPanelClose();
+  $('#delete-quote-back').onclick=renderSavedQuotesModal;
+  $('#delete-quote-confirm').onclick=async()=>{
+    try{await db(`saved_quotes?id=eq.${id}`,{method:'DELETE'});if(state.quote?.savedId===id)state.quote.savedId=null;await refreshSavedQuotes();renderSavedQuotesModal();showToast('Presupuesto eliminado.');}catch(error){showToast(readableError(error));}
+  };
+}
+async function saveQuoteToCloud(){
+  if(state.preview)return showToast('Los presupuestos guardados no están disponibles en la vista previa local.');
+  syncQuoteFields();
+  const rows=quoteRows();
+  if(!rows.length)return showToast('Agregá al menos un producto para guardar el presupuesto.');
+  const totals=quoteTotals(rows),label=(state.quote.client||'').trim()||'Presupuesto sin nombre';
+  const payload={label,item_count:rows.length,total:totals.total,snapshot:{client:state.quote.client,address:state.quote.address,discountPercentage:state.quote.discountPercentage,previousBalance:state.quote.previousBalance,items:state.quote.items},updated_at:new Date().toISOString()};
+  try{
+    if(state.quote.savedId){
+      await db(`saved_quotes?id=eq.${state.quote.savedId}`,{method:'PATCH',body:payload,prefer:'return=minimal'});
+    }else{
+      const [row]=await db('saved_quotes',{method:'POST',body:payload,prefer:'return=representation'});
+      state.quote.savedId=row.id;
+    }
+    await refreshSavedQuotes().catch(()=>{});
+    showToast('Presupuesto guardado en la nube.');
+  }catch(error){showToast(readableError(error));}
+}
 
 async function refreshHistory(){if(state.preview)return;state.history=await db('price_change_batches?select=id,change_type,scope_label,percentage,affected_products,affected_prices,created_at&order=created_at.desc&limit=50');}
 async function openHistory(){if(!state.preview)try{await refreshHistory();}catch(error){return showToast(readableError(error));}$('#panel-root').innerHTML=`<div class="panel-overlay"><section class="panel panel-wide"><div class="panel-head"><div><h2>Historial de precios</h2><p>Cambios manuales, aumentos, productos creados y restauraciones.</p></div><button class="icon-close" data-close>×</button></div>${state.history.length?`<div class="history-list">${state.history.map(historyRow).join('')}</div>`:'<div class="panel-empty"><strong>Todavía no hay cambios</strong></div>'}</section></div>`;bindPanelClose();}
