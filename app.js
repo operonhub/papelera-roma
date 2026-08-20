@@ -41,6 +41,16 @@ const codeFormatHint=catalog=>catalog==='heladeria'?'H1':'00001-P';
 const normalizeSearch=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('es').replace(/[^a-z0-9]+/g,' ').trim().replace(/\s+/g,' ');
 const searchTokens=value=>normalizeSearch(value).split(' ').filter(Boolean);
 const matchesProductSearch=(product,query)=>{const tokens=searchTokens(query);if(!tokens.length)return true;const text=normalizeSearch(`${product.codigo} ${product.nombre} ${product.categoria} ${product.observaciones} ${product.cantidad_bulto} ${product.presentacion}`);return tokens.every(token=>text.includes(token));};
+function searchScore(product,tokens,phrase){
+  if(!tokens.length)return 0;
+  const codeText=normalizeSearch(product.codigo),nameText=normalizeSearch(product.nombre),otherText=normalizeSearch(`${product.categoria} ${product.observaciones} ${product.cantidad_bulto} ${product.presentacion}`);
+  let score=0;
+  if(codeText===phrase)score+=1000;else if(codeText.startsWith(phrase))score+=600;else if(codeText.includes(phrase))score+=400;
+  if(nameText===phrase)score+=900;else if(nameText.startsWith(phrase))score+=350;else if(nameText.includes(phrase))score+=250;
+  for(const token of tokens){if(nameText.includes(token))score+=20;else if(codeText.includes(token))score+=12;else if(otherText.includes(token))score+=4;}
+  return score;
+}
+function rankBySearch(products,query){const tokens=searchTokens(query);if(!tokens.length)return products;const phrase=tokens.join(' ');return [...products].sort((a,b)=>searchScore(b,tokens,phrase)-searchScore(a,tokens,phrase));}
 const validProductCode=(code,catalog)=>{const value=String(code).trim().toUpperCase();return catalog==='heladeria'?/^H[1-9][0-9]*$/.test(value):/^[0-9]{5}-P$/.test(value)&&Number(value.slice(0,5))>0;};
 function nextProductCode(catalog=state.catalog){
   if(catalog==='heladeria'){const highest=state.products.filter(product=>product.catalogo==='heladeria'&&/^H[1-9][0-9]*$/i.test(product.codigo)).reduce((max,product)=>Math.max(max,Number(product.codigo.slice(1))||0),0);return `H${highest+1}`;}
@@ -206,7 +216,7 @@ async function renderQuickSearchResults(){
     try{await Promise.all(missing.map(loadCatalogData));}catch(error){container.innerHTML=`<div class="quick-search-empty">${esc(readableError(error))}</div>`;return;}
     if($('#quick-search-input').value.trim()!==query)return;
   }
-  const all=state.products.filter(product=>product.activo!==false&&matchesProductSearch(product,query)),matches=all.slice(0,QUICK_SEARCH_LIMIT);
+  const all=rankBySearch(state.products.filter(product=>product.activo!==false&&matchesProductSearch(product,query)),query),matches=all.slice(0,QUICK_SEARCH_LIMIT);
   const rows=matches.map(product=>`<button type="button" class="quick-result" data-quick-result="${product.id}"><div class="quick-result-name"><strong><span class="product-code">${esc(product.codigo)}</span>${esc(product.nombre)}</strong><small>${esc(CATALOGS[product.catalogo]?.name||product.catalogo)} · ${esc(product.categoria)}</small></div><div class="quick-result-prices">${esc(quickPriceSummary(product))}</div></button>`).join('');
   const truncated=all.length>matches.length?`<div class="quick-search-truncated">Mostrando ${number(matches.length)} de ${number(all.length)} resultados · seguí escribiendo para afinar</div>`:'';
   container.innerHTML=matches.length?rows+truncated:'<div class="quick-search-empty">No encontramos productos.</div>';
@@ -306,9 +316,17 @@ function priceColumnHeaderCells(){
 }
 
 function renderCatalog(){
-  const items=filtered(),categories=orderedCategoryNames(items),forceOpen=Boolean(state.filters.search.trim()||state.filters.category);$('#empty').hidden=items.length>0||!catalogProducts().length;
+  const items=filtered(),query=state.filters.search.trim(),tokens=searchTokens(query),phrase=tokens.join(' ');
+  let categories=orderedCategoryNames(items);
+  const scoreOf=tokens.length?new Map(items.map(product=>[product.id,searchScore(product,tokens,phrase)])):null;
+  if(scoreOf){
+    const bestByCategory=new Map();
+    for(const item of items){const s=scoreOf.get(item.id);if(s>(bestByCategory.get(item.categoria)??-1))bestByCategory.set(item.categoria,s);}
+    categories=[...categories].sort((a,b)=>(bestByCategory.get(b)??0)-(bestByCategory.get(a)??0));
+  }
+  const forceOpen=Boolean(query||state.filters.category);$('#empty').hidden=items.length>0||!catalogProducts().length;
   const headerCells=priceColumnHeaderCells();
-  $('#catalog').innerHTML=categories.map(category=>{const products=items.filter(product=>product.categoria===category).sort(byProductOrder),categoryId=products[0]?.categoria_id??'',key=`${state.catalog}:${categoryId||category}`,expanded=forceOpen||state.expandedCategories.has(key),body=expanded?`<div class="category-body"><div class="price-columns-header">${headerCells}</div>${products.map(productRow).join('')}</div>`:'';return `<section class="category-block ${state.catalog}"><div class="category-heading"><button class="category-toggle" type="button" data-toggle-category="${esc(key)}" aria-expanded="${expanded}" aria-label="${expanded?'Cerrar':'Abrir'} categoría ${esc(category)}"><span class="category-chevron" aria-hidden="true">⌄</span><strong>${esc(category)}</strong></button><label class="category-select"><input class="category-check" type="checkbox" data-category="${esc(category)}" aria-label="Seleccionar categoría ${esc(category)}"><span>Seleccionar</span></label><div class="category-tools"><span>${number(products.length)}</span><button type="button" data-order-category-id="${categoryId}" data-order-category-name="${esc(category)}" aria-label="Ordenar productos de ${esc(category)}">Ordenar productos</button><button type="button" data-edit-category-id="${categoryId}" data-edit-category-name="${esc(category)}" aria-label="Editar categoría ${esc(category)}">Editar nombre</button></div></div>${body}</section>`;}).join('');updateSelectionBar();syncCategoryChecks();
+  $('#catalog').innerHTML=categories.map(category=>{const products=items.filter(product=>product.categoria===category).sort(scoreOf?(a,b)=>scoreOf.get(b.id)-scoreOf.get(a.id):byProductOrder),categoryId=products[0]?.categoria_id??'',key=`${state.catalog}:${categoryId||category}`,expanded=forceOpen||state.expandedCategories.has(key),body=expanded?`<div class="category-body"><div class="price-columns-header">${headerCells}</div>${products.map(productRow).join('')}</div>`:'';return `<section class="category-block ${state.catalog}"><div class="category-heading"><button class="category-toggle" type="button" data-toggle-category="${esc(key)}" aria-expanded="${expanded}" aria-label="${expanded?'Cerrar':'Abrir'} categoría ${esc(category)}"><span class="category-chevron" aria-hidden="true">⌄</span><strong>${esc(category)}</strong></button><label class="category-select"><input class="category-check" type="checkbox" data-category="${esc(category)}" aria-label="Seleccionar categoría ${esc(category)}"><span>Seleccionar</span></label><div class="category-tools"><span>${number(products.length)}</span><button type="button" data-order-category-id="${categoryId}" data-order-category-name="${esc(category)}" aria-label="Ordenar productos de ${esc(category)}">Ordenar productos</button><button type="button" data-edit-category-id="${categoryId}" data-edit-category-name="${esc(category)}" aria-label="Editar categoría ${esc(category)}">Editar nombre</button></div></div>${body}</section>`;}).join('');updateSelectionBar();syncCategoryChecks();
   const frozenColumns=$('#catalog-frozen-columns');
   if(frozenColumns){frozenColumns.className='price-columns-header'+(state.catalog==='heladeria'?' heladeria':'');frozenColumns.innerHTML=headerCells;}
   requestCatalogFrozenHeaderUpdate();
@@ -538,7 +556,7 @@ async function renderQuoteSearch(){
     try{await Promise.all(missing.map(loadCatalogData));}catch(error){container.innerHTML=`<div class="quote-no-results">${esc(readableError(error))}</div>`;return;}
     if($('#quote-search').value.trim()!==query)return;
   }
-  const existing=new Set(state.quote.items.map(item=>item.id)),all=state.products.filter(product=>!existing.has(product.id)&&firstPriceField(product)&&matchesProductSearch(product,query)),matches=all.slice(0,QUOTE_SEARCH_LIMIT);
+  const existing=new Set(state.quote.items.map(item=>item.id)),all=rankBySearch(state.products.filter(product=>!existing.has(product.id)&&firstPriceField(product)&&matchesProductSearch(product,query)),query),matches=all.slice(0,QUOTE_SEARCH_LIMIT);
   container.hidden=false;
   const rows=matches.map(product=>`<button type="button" data-quote-add="${product.id}"><span><strong><span class="product-code">${esc(product.codigo)}</span>${esc(product.nombre)}</strong><small>${esc(CATALOGS[product.catalogo]?.name||product.catalogo)} · ${esc(product.categoria)}</small></span><b>Agregar</b></button>`).join('');
   const truncated=all.length>matches.length?`<div class="quote-search-truncated">Mostrando ${number(matches.length)} de ${number(all.length)} resultados · seguí escribiendo para afinar</div>`:'';
