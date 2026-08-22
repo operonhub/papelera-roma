@@ -69,13 +69,13 @@
   async function buildPriceListPdf({items,title,client,date,priceFields,detailKey,detailLabel}){
     const brand=await loadBrand();
     const [pageW,pageH]=A4.landscape,pages=[];let ops,y;
-    const compact=Boolean(detailKey&&priceFields.length===1),cols={name:34,detail:500,prices:compact?[808]:[500,574,648,722,808],right:808};
+    const compact=Boolean(detailKey&&priceFields.length===1),cols={name:34,nameWidth:compact?430:230,detail:compact?500:280,detailWidth:compact?190:210,prices:compact?[808]:[500,574,648,722,808],right:808};
     const groups=new Map();
     [...items].sort((a,b)=>a.categoria.localeCompare(b.categoria,'es',{sensitivity:'base',numeric:true})||(Number(a.orden)-Number(b.orden))||a.nombre.localeCompare(b.nombre,'es',{sensitivity:'base',numeric:true})).forEach(p=>{if(!groups.has(p.categoria))groups.set(p.categoria,[]);groups.get(p.categoria).push(p);});
     function tableHeader(){
       rect(ops,30,y-5,pageW-60,19,[.89,.95,.93]);
       text(ops,cols.name,y,'Producto',8,true);
-      if(compact)text(ops,cols.detail,y,detailLabel||'Cantidad / presentaciÃ³n',8,true);
+      text(ops,cols.detail,y,compact?(detailLabel||'Cantidad / presentaciÃ³n'):'Contenido del bulto',8,true);
       priceFields.forEach((field,i)=>textRight(ops,cols.prices[i],y,field.label,8,true));y-=23;
     }
     function newPage(){
@@ -94,8 +94,8 @@
     for(const [category,products] of groups){
       ensure(34);rect(ops,30,y-6,pageW-60,20,[.82,.93,.89]);text(ops,34,y,truncate(category,740,9,true),9,true,TEAL);y-=24;
       for(const p of products){
-        ensure(24);text(ops,cols.name,y,truncate(p.nombre,compact?430:400,8),8,false);
-        if(compact)text(ops,cols.detail,y,truncate(p[detailKey]||'-',190,8),8,false);
+        ensure(24);text(ops,cols.name,y,truncate(p.nombre,cols.nameWidth,8),8,false);
+        text(ops,cols.detail,y,truncate((compact?p[detailKey]:p.cantidad_bulto)||'-',cols.detailWidth,8),8,false);
         priceFields.forEach((field,i)=>{const value=p[field.key];textRight(ops,cols.prices[i],y,typeof value==='number'?money(value):'-',8,false);});
         line(ops,34,y-9,pageW-34,y-9);y-=22;
       }
